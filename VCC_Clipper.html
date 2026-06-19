@@ -359,6 +359,7 @@ footer input[type="text"] {
 .chat-input-bar { display:flex; gap:8px; }
 .chat-input-bar input { flex:1; background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:10px 14px; border-radius:8px; font-size:14px; outline:none; }
 .chat-input-bar input:focus { border-color:#38bdf8; }
+.chat-clear-bar { display: flex; justify-content: flex-end; padding: 4px 0; gap: 8px; }
 .display-name-span { cursor:pointer; padding:4px 8px; border-radius:6px; font-size:13px; color:#e2e8f0; background:#1e293b; border:1px solid transparent; transition:border-color 0.15s; white-space:nowrap; }
 .display-name-span:hover { border-color:#334155; }
 .display-name-span.editing { border-color:#38bdf8; background:#0f172a; }
@@ -405,6 +406,40 @@ footer input[type="text"] {
     to { transform: translateY(0); }
 }
 
+/* --- Confirm Dialog --- */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+.modal-dialog {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.modal-dialog p {
+    margin-bottom: 20px;
+    font-size: 15px;
+    color: #e2e8f0;
+    text-align: center;
+    line-height: 1.6;
+}
+.modal-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+}
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+}
+
 </style>
 </head>
 <body>
@@ -433,6 +468,9 @@ footer input[type="text"] {
             <div class="chat-input-bar">
                 <input type="text" id="chatInput" placeholder="輸入訊息，Enter 發送...">
                 <button class="btn btn-primary" id="btnChatSend">發送</button>
+            </div>
+            <div class="chat-clear-bar">
+                <button class="btn btn-secondary" id="btnClearChat">🗑 清除本機紀錄</button>
             </div>
         </div>
     </section>
@@ -506,7 +544,6 @@ const APP = {
         ws: null,
         displayName: '',
         peerNames: new Map(), // peerId → display name
-        chatMessages: [],
         fileQueue: [],
         fileSending: null,
         fileReceives: new Map(),
@@ -514,6 +551,9 @@ const APP = {
         selectedTargetPeerIds: new Set(),
         sendDoneCount: 0,
         intentionalDisconnect: false,
+        syncProviders: [],
+        syncConsumers: [],
+        persistedChatMessages: [],
     },
     updateStatus(status) {
         const badge = document.getElementById('statusBadge');
@@ -581,6 +621,65 @@ const APP = {
             });
         }
     }
+};
+
+// ========== LocalStorage Persistence ==========
+function saveToStorage(key, data) {
+    try {
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+        console.warn('[Storage] save error', e);
+    }
+}
+function loadFromStorage(key, defaultVal) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : defaultVal;
+    } catch (e) {
+        console.warn('[Storage] load error', e);
+        return defaultVal;
+    }
+}
+
+// ========== Confirmation Dialog ==========
+function showConfirmDialog(message) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.innerHTML = '<div class="modal-dialog">'
+            + '<p>' + escapeHtml(message) + '</p>'
+            + '<div class="modal-buttons">'
+            + '<button class="btn btn-secondary" id="confirmCancel">取消</button>'
+            + '<button class="btn btn-danger" id="confirmOk">確定</button>'
+            + '</div></div>';
+        document.body.appendChild(overlay);
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        const handler = (e) => {
+            if (e.key === 'Escape') { cleanup(false); }
+            if (e.key === 'Enter') { cleanup(true); }
+        };
+        function cleanup(val) {
+            document.removeEventListener('keydown', handler);
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            resolve(val);
+        }
+        okBtn.addEventListener('click', () => cleanup(true));
+        cancelBtn.addEventListener('click', () => cleanup(false));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) cleanup(false);
+        });
+        okBtn.focus();
+        document.addEventListener('keydown', handler);
+    });
+}
+
+// ========== Sync Infrastructure ==========
+APP.registerSyncProvider = function(fn) {
+    APP.state.syncProviders.push(fn);
+};
+APP.registerSyncConsumer = function(fn) {
+    APP.state.syncConsumers.push(fn);
 };
 
 // ========== Display Name ==========
@@ -911,6 +1010,12 @@ function setupDataChannel(dc, peerId) {
         } catch (e) {
             console.error('[DC] send peer-info error', e);
         }
+        // Send sync request to get state from the connected peer
+        try {
+            dc.send(JSON.stringify({type: 'sync-request'}));
+        } catch (e) {
+            console.error('[DC] send sync-request error', e);
+        }
         APP.updatePeerCount();
         if (!APP.state.connected) {
             APP.updateStatus('connected');
@@ -950,6 +1055,23 @@ function setupDataChannel(dc, peerId) {
                         break;
                     case 'file-done':
                         handleFileDone(msg, peerId);
+                        break;
+                    case 'sync-request': {
+                        const state = {};
+                        for (const fn of APP.state.syncProviders) {
+                            Object.assign(state, fn());
+                        }
+                        try {
+                            dc.send(JSON.stringify({type: 'sync-state', ...state}));
+                        } catch (e) {
+                            console.error('[DC] send sync-state error', e);
+                        }
+                        break;
+                    }
+                    case 'sync-state':
+                        for (const fn of APP.state.syncConsumers) {
+                            fn(msg);
+                        }
                         break;
                     default:
                         console.log(`[DC:${peerId}] Unknown message type:`, msg.type);
@@ -1103,7 +1225,13 @@ document.getElementById('displayNameSpan').addEventListener('click', function() 
         if (e.key === 'Escape') { commit(''); }
     });
 });
-console.log('[VCC] App initialized');
+console.log('[VCC] App initialized');console.log('[VCC] App initialized');
+// ========== Load Persisted Messages ==========
+const savedMessages = loadFromStorage('vcc_chat_messages', []);
+APP.state.persistedChatMessages = savedMessages;
+for (const msg of savedMessages) {
+    renderChatMessage(msg.from, msg.text, msg.timestamp);
+}
 // ========== File Transfer ===
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 B';
@@ -1452,6 +1580,17 @@ function sendChatMessage() {
 }
 
 function appendChatMessage(from, text, timestamp) {
+    // Persist
+    APP.state.persistedChatMessages.push({from, text, timestamp});
+    saveToStorage('vcc_chat_messages', APP.state.persistedChatMessages.slice(-200));
+    if (APP.state.persistedChatMessages.length > 200) {
+        APP.state.persistedChatMessages = APP.state.persistedChatMessages.slice(-200);
+    }
+    // Render DOM
+    renderChatMessage(from, text, timestamp);
+}
+
+function renderChatMessage(from, text, timestamp) {
     const container = document.getElementById('chatMessages');
     const isSelf = from === APP.state.displayName;
     const side = isSelf ? 'self' : 'other';
@@ -1470,8 +1609,16 @@ function appendChatMessage(from, text, timestamp) {
 }
 
 function appendSystemMessage(text) {
+    const timestamp = Date.now();
+    // Persist
+    APP.state.persistedChatMessages.push({from: '系統', text, timestamp});
+    saveToStorage('vcc_chat_messages', APP.state.persistedChatMessages.slice(-200));
+    if (APP.state.persistedChatMessages.length > 200) {
+        APP.state.persistedChatMessages = APP.state.persistedChatMessages.slice(-200);
+    }
+    // Render DOM
     const container = document.getElementById('chatMessages');
-    const timeStr = new Date().toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const timeStr = new Date(timestamp).toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
     const div = document.createElement('div');
     div.className = 'chat-msg other';
     div.style.alignSelf = 'center';
@@ -1491,6 +1638,14 @@ function appendSystemMessage(text) {
 document.getElementById('btnChatSend').addEventListener('click', sendChatMessage);
 document.getElementById('chatInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendChatMessage();
+});
+document.getElementById('btnClearChat').addEventListener('click', async () => {
+    const confirmed = await showConfirmDialog('確定要清除本機聊天紀錄嗎？此操作僅影響本機，不會影響其他客戶端。');
+    if (!confirmed) return;
+    APP.state.persistedChatMessages = [];
+    saveToStorage('vcc_chat_messages', []);
+    document.getElementById('chatMessages').innerHTML = '';
+    APP.showStatusMsg('本機聊天紀錄已清除');
 });
 </script>
 </body>
