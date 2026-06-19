@@ -909,6 +909,44 @@ async def handler(websocket):
                 await websocket.send(json.dumps({"type": "admin-set-config-result", "success": True, "message": "設定已更新"}))
                 _log('ADMIN', f'{my_peer_id} updated server config')
 
+            elif msg_type == "admin-export":
+                if not _verify_admin_password(data.get("password", "")):
+                    await websocket.send(json.dumps({"type": "error", "message": "unauthorized"}))
+                    continue
+                dump_data = {
+                    "exportedAt": datetime.now(timezone.utc).isoformat(),
+                    "version": "1.1.0",
+                    "config": {
+                        "chatRetentionDays": _config["chatRetentionDays"],
+                        "ntpServer": _ntp_config["server"],
+                        "ntpEnabled": _ntp_config["enabled"],
+                    },
+                    "rooms": room_data,
+                }
+                await websocket.send(json.dumps({"type": "admin-export-result", "dump": json.dumps(dump_data)}))
+                _log('ADMIN', f'{my_peer_id} exported config dump ({len(room_data)} rooms)')
+
+            elif msg_type == "admin-import":
+                if not _verify_admin_password(data.get("password", "")):
+                    await websocket.send(json.dumps({"type": "error", "message": "unauthorized"}))
+                    continue
+                dump_raw = data.get("dump", "")
+                try:
+                    dump_data = json.loads(dump_raw)
+                    if "rooms" in dump_data:
+                        imported = 0
+                        for rid, rdata in dump_data["rooms"].items():
+                            if isinstance(rdata, dict):
+                                room_data[rid] = rdata
+                                imported += 1
+                        _save_state()
+                        _log('ADMIN', f'{my_peer_id} imported {imported} rooms from config dump')
+                        await websocket.send(json.dumps({"type": "admin-import-result", "success": True, "message": f"成功匯入 {imported} 個房間的資料", "count": imported}))
+                    else:
+                        await websocket.send(json.dumps({"type": "admin-import-result", "success": False, "message": "無效的備份檔案：缺少 rooms 資料"}))
+                except json.JSONDecodeError as e:
+                    await websocket.send(json.dumps({"type": "admin-import-result", "success": False, "message": f"無效的 JSON 格式：{e}"}))
+
             elif msg_type == "dump":
                 iso_ts = datetime.now(timezone.utc).isoformat()
                 rooms_diag = {}

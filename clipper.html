@@ -1174,6 +1174,16 @@ footer input[type="text"] {
                         <div style="padding:10px 14px;background:#1e293b;border-radius:8px;color:#64748b;font-size:13px;">
                             <span>日誌路徑: <code id="adminLogPath" style="color:#94a3b8;"></code></span>
                         </div>
+                        <div style="border-top:1px solid #334155;padding-top:12px;margin-top:4px;">
+                            <h3 style="font-size:16px;font-weight:500;margin-bottom:8px;color:#e2e8f0;">💾 備份與還原</h3>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                <button class="btn btn-secondary" id="btnExportDump" style="font-size:12px;padding:6px 12px;">⬇️ 匯出設定備份</button>
+                                <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer;">📂 匯入備份
+                                    <input type="file" id="fileImportDump" accept=".json" style="display:none;">
+                                </label>
+                            </div>
+                            <div id="importResult" style="margin-top:8px;font-size:13px;"></div>
+                        </div>
                     </div>
                 </div>
                 <!-- NTP Config -->
@@ -4265,6 +4275,30 @@ function handleAdminMessage(data) {
         }
     } else if (data.type === 'admin-set-config-result') {
         APP.showStatusMsg(data.success ? '✅ ' + data.message : '❌ ' + data.message);
+    } else if (data.type === 'admin-export-result') {
+        // Download dump as JSON file
+        if (data.dump) {
+            const blob = new Blob([data.dump], {type: 'application/json;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'clipper-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            APP.showStatusMsg('✅ 設定備份已下載');
+        }
+    } else if (data.type === 'admin-import-result') {
+        const el = document.getElementById('importResult');
+        if (el) {
+            if (data.success) {
+                el.innerHTML = '<span style="color:#22c55e;">✅ ' + escapeHtml(data.message) + '</span>';
+                APP.showStatusMsg('✅ ' + data.message);
+            } else {
+                el.innerHTML = '<span style="color:#ef4444;">❌ ' + escapeHtml(data.message) + '</span>';
+            }
+        }
     }
 }
 
@@ -4306,6 +4340,23 @@ document.getElementById('btnSaveNtp')?.addEventListener('click', () => {
     const server = document.getElementById('adminNtpServer').value.trim();
     if (!server) { APP.showStatusMsg('❌ 請輸入 NTP 伺服器位址'); return; }
     sendWsMessage({type: 'ntp-config', password: _adminPassword, ntpServer: server, ntpEnabled: true});
+});
+
+// Export/Import dump
+document.getElementById('btnExportDump')?.addEventListener('click', () => {
+    if (!_adminPassword) return;
+    sendWsMessage({type: 'admin-export', password: _adminPassword});
+});
+document.getElementById('fileImportDump')?.addEventListener('change', function() {
+    if (!_adminPassword) return;
+    const file = this.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        sendWsMessage({type: 'admin-import', password: _adminPassword, dump: e.target.result});
+    };
+    reader.readAsText(file);
+    this.value = '';
 });
 
 // Change password
