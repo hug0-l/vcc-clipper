@@ -607,6 +607,54 @@ footer input[type="text"] {
 .checklist-item:hover .checklist-item-del { display:inline-block; }
 .checklist-item-del:hover { background:rgba(239,68,68,0.1); }
 .checklist-empty { text-align:center; padding:40px 20px; color:#64748b; font-size:14px; }
+/* Checklist v2 */
+.checklist-v2-container { max-width:700px; margin:0 auto; }
+.checklist-v2-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.checklist-board { background:#1e293b; border-radius:10px; margin-bottom:12px; overflow:hidden; border-left:4px solid #38bdf8; }
+.checklist-board.pinned { border-left-color:#f59e0b; }
+.checklist-board-header { 
+  display:flex; align-items:center; gap:8px; padding:12px 14px; cursor:pointer;
+  user-select:none; transition:background 0.1s;
+}
+.checklist-board-header:hover { background:rgba(255,255,255,0.03); }
+.checklist-board-arrow { font-size:12px; color:#64748b; transition:transform 0.15s; }
+.checklist-board-arrow.expanded { transform:rotate(90deg); }
+.checklist-board-title { font-weight:600; font-size:15px; flex:1; }
+.checklist-board-category { font-size:11px; padding:2px 8px; border-radius:10px; background:#334155; color:#94a3b8; }
+.checklist-board-tags { display:flex; gap:4px; }
+.checklist-board-tag { font-size:10px; padding:1px 6px; border-radius:8px; background:#0f172a; color:#64748b; }
+.checklist-board-pin-badge { font-size:13px; }
+.checklist-board-actions { display:flex; gap:4px; margin-left:auto; }
+.checklist-board-actions button { background:none; border:none; color:#64748b; cursor:pointer; font-size:14px; padding:2px 6px; border-radius:4px; font-family:inherit; }
+.checklist-board-actions button:hover { color:#e2e8f0; background:rgba(255,255,255,0.05); }
+.checklist-board-body { padding:0 14px 12px; display:none; }
+.checklist-board-body.expanded { display:block; }
+.checklist-board-items { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+.checklist-board-item { display:flex; align-items:center; padding:8px 10px; background:#0f172a; border-radius:6px; gap:8px; }
+.checklist-board-item.done { opacity:0.6; }
+.checklist-board-item-checkbox { width:16px; height:16px; cursor:pointer; accent-color:#38bdf8; flex-shrink:0; }
+.checklist-board-item-text { flex:1; font-size:13px; cursor:pointer; }
+.checklist-board-item-text.done { text-decoration:line-through; color:#64748b; }
+.checklist-board-item-meta { font-size:11px; color:#475569; white-space:nowrap; }
+.checklist-board-item-del { background:none; border:none; color:#ef4444; cursor:pointer; font-size:13px; padding:2px 4px; border-radius:4px; display:none; }
+.checklist-board-item:hover .checklist-board-item-del { display:inline-block; }
+.checklist-board-item-del:hover { background:rgba(239,68,68,0.1); }
+.checklist-board-add-bar { display:flex; gap:6px; }
+.checklist-board-add-bar input { flex:1; background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:6px 10px; border-radius:6px; font-size:13px; outline:none; }
+.checklist-board-add-bar input:focus { border-color:#38bdf8; }
+.checklist-board-empty { color:#475569; font-size:13px; text-align:center; padding:20px; }
+
+/* Color picker in form */
+.color-picker { display:flex; gap:6px; flex-wrap:wrap; }
+.color-swatch { width:28px; height:28px; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:border-color 0.1s; }
+.color-swatch:hover { opacity:0.8; }
+.color-swatch.selected { border-color:#fff; box-shadow:0 0 0 2px #38bdf8; }
+
+/* Notice board v2 additions */
+.category-badge { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:500; }
+.tag-badge { font-size:10px; padding:1px 6px; border-radius:8px; background:#1e293b; color:#94a3b8; border:1px solid #334155; }
+.notice-card-category { display:flex; gap:6px; align-items:center; margin-bottom:4px; }
+.notice-card-tags { display:flex; gap:4px; flex-wrap:wrap; margin:4px 0; }
 </style>
 </head>
 <body>
@@ -668,13 +716,12 @@ footer input[type="text"] {
     </section>
 
         <section class="tab-pane" data-tab="checklist">
-        <div class="checklist-container">
-            <h2 style="margin-bottom:12px;">✅ 檢查清單</h2>
-            <div class="checklist-add-bar">
-                <input type="text" id="checklistInput" placeholder="新增待辦事項，Enter 新增...">
-                <button class="btn btn-primary" id="btnChecklistAdd">新增</button>
+        <div class="checklist-v2-container">
+            <div class="checklist-v2-header">
+                <h2>✅ 檢查清單</h2>
+                <button class="btn btn-primary" id="btnNewChecklist">📋 新增檢查清單</button>
             </div>
-            <div class="checklist-items" id="checklistItems"></div>
+            <div class="checklist-v2-boards" id="checklistBoards"></div>
         </div>
     </section>
 <section class="tab-pane" data-tab="about">
@@ -743,8 +790,8 @@ const APP = {
         noticePosts: [],
         syncProviders: [],
         syncConsumers: [],
-        persistedChatMessages: [],        checklistItems: [], // array of {id, text, checked, addedBy, timestamp, checkedAt}
-
+        persistedChatMessages: [],
+        checklists: [], // array of board objects
     },
     updateStatus(status) {
         const badge = document.getElementById('statusBadge');
@@ -1172,13 +1219,13 @@ function handleWsMessage(data) {
             break;
 
         case 'room-state':
-            // data.noticePosts, data.checklistItems
+            // data.noticePosts, data.checklists
             APP.state.noticePosts = data.noticePosts || [];
-            APP.state.checklistItems = data.checklistItems || [];
+            APP.state.checklists = data.checklists || [];
             saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
+            saveToStorage('vcc_checklists', APP.state.checklists);
             renderNoticeBoard();
-            renderChecklist();
+            renderChecklistBoards();
             break;
 
         case 'notice-create':
@@ -1218,30 +1265,90 @@ function handleWsMessage(data) {
             break;
         }
 
-        case 'checklist-add':
-            mergeIncomingChecklistItem(data.item);
-            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-            renderChecklist();
-            break;
-
-        case 'checklist-toggle': {
-            const chkItem = APP.state.checklistItems.find(i => i.id === data.id);
-            if (chkItem) {
-                chkItem.checked = data.checked;
-                chkItem.checkedAt = data.checkedAt;
-                saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-                renderChecklist();
+        case 'checklistboard-create':
+            // data.board — full board
+            if (!APP.state.checklists.some(b => b.id === data.board.id)) {
+                APP.state.checklists.push(data.board);
+                saveToStorage('vcc_checklists', APP.state.checklists);
+                renderChecklistBoards();
             }
             break;
-        }
 
-        case 'checklist-delete':
-            APP.state.checklistItems = APP.state.checklistItems.filter(i => i.id !== data.id);
-            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-            renderChecklist();
+        case 'checklistboard-edit':
+            // data.id, data.title, data.category, data.tags, data.color
+            {
+                const board = APP.state.checklists.find(b => b.id === data.id);
+                if (board) {
+                    if (data.title !== undefined) board.title = data.title;
+                    if (data.category !== undefined) board.category = data.category;
+                    if (data.tags !== undefined) board.tags = data.tags;
+                    if (data.color !== undefined) board.color = data.color;
+                    saveToStorage('vcc_checklists', APP.state.checklists);
+                    renderChecklistBoards();
+                }
+            }
             break;
 
-        case 'dump-result':
+        case 'checklistboard-delete':
+            // data.id
+            APP.state.checklists = APP.state.checklists.filter(b => b.id !== data.id);
+            saveToStorage('vcc_checklists', APP.state.checklists);
+            renderChecklistBoards();
+            break;
+
+        case 'checklistboard-pin':
+            // data.id, data.pinned
+            {
+                const pinBoard = APP.state.checklists.find(b => b.id === data.id);
+                if (pinBoard) {
+                    pinBoard.pinned = data.pinned;
+                    saveToStorage('vcc_checklists', APP.state.checklists);
+                    renderChecklistBoards();
+                }
+            }
+            break;
+
+        case 'checklist-add':
+            // data.checklistId, data.item
+            {
+                const addBoard = APP.state.checklists.find(b => b.id === data.checklistId);
+                if (addBoard && !addBoard.items.some(i => i.id === data.item.id)) {
+                    addBoard.items.push(data.item);
+                    saveToStorage('vcc_checklists', APP.state.checklists);
+                    renderChecklistBoards();
+                }
+            }
+            break;
+
+        case 'checklist-toggle':
+            // data.checklistId, data.id, data.checked, data.checkedAt
+            {
+                const tglBoard = APP.state.checklists.find(b => b.id === data.checklistId);
+                if (tglBoard) {
+                    const tglItem = tglBoard.items.find(i => i.id === data.id);
+                    if (tglItem) {
+                        tglItem.checked = data.checked;
+                        tglItem.checkedAt = data.checkedAt;
+                        saveToStorage('vcc_checklists', APP.state.checklists);
+                        renderChecklistBoards();
+                    }
+                }
+            }
+            break;
+
+        case 'checklist-delete':
+            // data.checklistId, data.id
+            {
+                const delBoard = APP.state.checklists.find(b => b.id === data.checklistId);
+                if (delBoard) {
+                    delBoard.items = delBoard.items.filter(i => i.id !== data.id);
+                    saveToStorage('vcc_checklists', APP.state.checklists);
+                    renderChecklistBoards();
+                }
+            }
+            break;
+
+        case 'dump-result':case 'dump-result':
             console.log('=== Server Dump ===', JSON.stringify(data, null, 2));
             APP.showStatusMsg('🔍 伺服器資料已輸出到開發者主控台');
             break;
@@ -1698,59 +1805,287 @@ APP.state.persistedChatMessages = savedMessages;
 for (const msg of savedMessages) {
     renderChatMessage(msg.from, msg.text, msg.timestamp);
 }
-// ========== Checklist ==========
-function renderChecklist() {
-    const container = document.getElementById('checklistItems');
-    const items = APP.state.checklistItems;
-    if (items.length === 0) {
-        container.innerHTML = '<div class="checklist-empty">暫無待辦事項</div>';
+// ========== Checklist v2 ==========
+const CHECKLIST_COLORS = [
+  { value: '#38bdf8', label: '天藍' },
+  { value: '#22c55e', label: '綠色' },
+  { value: '#ef4444', label: '紅色' },
+  { value: '#f59e0b', label: '琥珀' },
+  { value: '#a855f7', label: '紫色' },
+  { value: '#ec4899', label: '粉色' },
+  { value: '#14b8a6', label: '青色' },
+  { value: '#f97316', label: '橙色' },
+  { value: '#e2e8f0', label: '灰色' },
+  { value: '#ffffff', label: '白色' },
+];
+
+function renderChecklistBoards() {
+    const container = document.getElementById('checklistBoards');
+    if (!container) return;
+    const boards = APP.state.checklists;
+    if (boards.length === 0) {
+        container.innerHTML = '<div style="color:#475569;font-size:14px;text-align:center;padding:40px;">暫無檢查清單，點擊上方按鈕新增</div>';
         return;
     }
-    // Sort: unchecked first (timestamp asc), then checked (checkedAt desc)
-    const sorted = [...items].sort((a, b) => {
-        if (a.checked !== b.checked) return a.checked ? 1 : -1;
-        if (!a.checked) return a.timestamp - b.timestamp;
-        return (b.checkedAt || 0) - (a.checkedAt || 0);
+    // Sort: pinned first (by createdAt desc), then unpinned (by createdAt desc)
+    const sorted = [...boards].sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return (b.createdAt || 0) - (a.createdAt || 0);
     });
-    container.innerHTML = sorted.map(item => {
-        const timeStr = new Date(item.timestamp).toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
-        const checkedClass = item.checked ? ' done' : '';
-        const textClass = item.checked ? ' done' : '';
-        return '<div class="checklist-item' + checkedClass + '" data-id="' + item.id + '">'
-            + '<input type="checkbox" class="checklist-item-checkbox" ' + (item.checked ? 'checked' : '') + '>'
-            + '<span class="checklist-item-text' + textClass + '">' + escapeHtml(item.text) + '</span>'
-            + '<span class="checklist-item-meta">' + escapeHtml(item.addedBy) + ' · ' + timeStr + '</span>'
-            + '<button class="checklist-item-del" title="刪除">🗑</button>'
+    container.innerHTML = sorted.map(board => {
+        const color = board.color || '#38bdf8';
+        const expandedClass = board._expanded ? 'expanded' : '';
+        const arrowClass = board._expanded ? 'expanded' : '';
+        const tagsHtml = renderBoardTags(board.tags);
+        const itemsHtml = renderBoardItems(board);
+        const bodyClass = board._expanded ? 'checklist-board-body expanded' : 'checklist-board-body';
+        return '<div class="checklist-board' + (board.pinned ? ' pinned' : '') + '" data-id="' + board.id + '" style="border-left-color:' + color + '">'
+            + '<div class="checklist-board-header" data-toggle="' + board.id + '">'
+            + '<span class="checklist-board-arrow ' + arrowClass + '">▶</span>'
+            + '<span class="checklist-board-title">' + escapeHtml(board.title) + '</span>'
+            + (board.category ? '<span class="checklist-board-category">' + escapeHtml(board.category) + '</span>' : '')
+            + tagsHtml
+            + (board.pinned ? '<span class="checklist-board-pin-badge">📌</span>' : '')
+            + '<span class="checklist-board-actions">'
+            + '<button class="btn-icon" data-action="add-item" data-id="' + board.id + '" title="新增項目">➕</button>'
+            + '<button class="btn-icon" data-action="edit" data-id="' + board.id + '" title="編輯">✏️</button>'
+            + '<button class="btn-icon" data-action="pin" data-id="' + board.id + '" title="' + (board.pinned ? '取消置頂' : '置頂') + '">📌</button>'
+            + '<button class="btn-icon" data-action="delete" data-id="' + board.id + '" title="刪除" style="color:#ef4444">🗑</button>'
+            + '</span>'
+            + '</div>'
+            + '<div class="' + bodyClass + '">'
+            + (board.items && board.items.length > 0
+                ? '<div class="checklist-board-items">' + itemsHtml + '</div>'
+                : '<div class="checklist-board-empty">暫無項目</div>')
+            + '<div class="checklist-board-add-bar">'
+            + '<input type="text" class="checklist-board-item-input" data-board-id="' + board.id + '" placeholder="新增項目，Enter 新增...">'
+            + '<button class="btn btn-primary" style="padding:4px 10px;font-size:12px;" data-action="add-item-btn" data-id="' + board.id + '">新增</button>'
+            + '</div>'
+            + '</div>'
             + '</div>';
     }).join('');
-    // Wire up checkboxes
-    container.querySelectorAll('.checklist-item-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-            const id = this.closest('.checklist-item').dataset.id;
-            toggleChecklistItem(id);
-        });
-    });
-    // Wire up text click to toggle
-    container.querySelectorAll('.checklist-item-text').forEach(el => {
+    // Wire up header click to toggle expand
+    container.querySelectorAll('[data-toggle]').forEach(el => {
         el.addEventListener('click', function() {
-            const id = this.closest('.checklist-item').dataset.id;
-            toggleChecklistItem(id);
+            const id = this.dataset.toggle;
+            const board = APP.state.checklists.find(b => b.id === id);
+            if (board) {
+                board._expanded = !board._expanded;
+                renderChecklistBoards();
+            }
         });
     });
-    // Wire up delete buttons
-    container.querySelectorAll('.checklist-item-del').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const id = this.closest('.checklist-item').dataset.id;
-            deleteChecklistItem(id);
+    // Wire up action buttons
+    container.querySelectorAll('[data-action="add-item"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            const board = APP.state.checklists.find(b => b.id === id);
+            if (board) {
+                board._expanded = true;
+                renderChecklistBoards();
+                // Focus the input after render
+                setTimeout(() => {
+                    const input = container.querySelector('.checklist-board-item-input[data-board-id="' + id + '"]');
+                    if (input) input.focus();
+                }, 50);
+            }
+        });
+    });
+    container.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            const board = APP.state.checklists.find(b => b.id === id);
+            if (board) showChecklistForm(board);
+        });
+    });
+    container.querySelectorAll('[data-action="pin"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            togglePinChecklist(this.dataset.id);
+        });
+    });
+    container.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            deleteChecklistBoard(this.dataset.id);
+        });
+    });
+    // Wire up add-item input Enter
+    container.querySelectorAll('.checklist-board-item-input').forEach(input => {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                addChecklistItem(this.dataset.boardId, this.value);
+                this.value = '';
+            }
+        });
+    });
+    container.querySelectorAll('[data-action="add-item-btn"]').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const id = this.dataset.id;
+            const input = container.querySelector('.checklist-board-item-input[data-board-id="' + id + '"]');
+            if (input && input.value.trim()) {
+                addChecklistItem(id, input.value);
+                input.value = '';
+            }
+        });
+    });
+    // Wire up item checkboxes
+    container.querySelectorAll('.checklist-board-item-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+            const boardId = this.dataset.boardId;
+            const itemId = this.dataset.itemId;
+            toggleChecklistItem(boardId, itemId);
+        });
+    });
+    // Wire up item text click
+    container.querySelectorAll('.checklist-board-item-text').forEach(el => {
+        el.addEventListener('click', function() {
+            const boardId = this.dataset.boardId;
+            const itemId = this.dataset.itemId;
+            toggleChecklistItem(boardId, itemId);
+        });
+    });
+    // Wire up item delete buttons
+    container.querySelectorAll('.checklist-board-item-del').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const boardId = this.dataset.boardId;
+            const itemId = this.dataset.itemId;
+            deleteChecklistItem(boardId, itemId);
         });
     });
 }
 
-function addChecklistItem(text) {
+function renderBoardTags(tags) {
+    if (!tags || tags.length === 0) return '';
+    const maxShow = 3;
+    const visible = tags.slice(0, maxShow);
+    const overflow = tags.length - maxShow;
+    let html = '<span class="checklist-board-tags">';
+    for (const tag of visible) {
+        html += '<span class="checklist-board-tag">' + escapeHtml(tag) + '</span>';
+    }
+    if (overflow > 0) {
+        html += '<span class="checklist-board-tag">+' + overflow + '</span>';
+    }
+    html += '</span>';
+    return html;
+}
+
+function renderBoardItems(board) {
+    if (!board.items || board.items.length === 0) return '';
+    const items = [...board.items].sort((a, b) => {
+        if (a.checked !== b.checked) return a.checked ? 1 : -1;
+        if (!a.checked) return a.timestamp - b.timestamp;
+        return (b.checkedAt || 0) - (a.checkedAt || 0);
+    });
+    return items.map(item => {
+        const timeStr = new Date(item.timestamp).toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'});
+        const doneClass = item.checked ? ' done' : '';
+        return '<div class="checklist-board-item' + doneClass + '">'
+            + '<input type="checkbox" class="checklist-board-item-checkbox" data-board-id="' + board.id + '" data-item-id="' + item.id + '" ' + (item.checked ? 'checked' : '') + '>'
+            + '<span class="checklist-board-item-text' + doneClass + '" data-board-id="' + board.id + '" data-item-id="' + item.id + '">' + escapeHtml(item.text) + '</span>'
+            + '<span class="checklist-board-item-meta">' + escapeHtml(item.addedBy) + ' · ' + timeStr + '</span>'
+            + '<button class="checklist-board-item-del" data-board-id="' + board.id + '" data-item-id="' + item.id + '" title="刪除">🗑</button>'
+            + '</div>';
+    }).join('');
+}
+
+function showChecklistForm(board) {
+    const existingOverlay = document.querySelector('.checklist-v2-form');
+    if (existingOverlay) existingOverlay.remove();
+
+    const isEdit = !!board;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay checklist-v2-form';
+    const colorsHtml = CHECKLIST_COLORS.map(c => {
+        const selected = isEdit && board.color === c.value ? ' selected' : '';
+        return '<span class="color-swatch' + selected + '" data-color="' + c.value + '" style="background:' + c.value + ';" title="' + c.label + '"></span>';
+    }).join('');
+    overlay.innerHTML = '<div class="modal-dialog" style="max-width:420px;">'
+        + '<h3 style="font-size:16px;font-weight:600;margin-bottom:16px;">' + (isEdit ? '✏️ 編輯檢查清單' : '📋 新增檢查清單') + '</h3>'
+        + '<input type="text" class="notice-form-input" id="clFormTitle" placeholder="標題（必填）" value="' + (isEdit ? escapeHtml(board.title) : '') + '">'
+        + '<input type="text" class="notice-form-input" id="clFormCategory" placeholder="分類（選填）" value="' + (isEdit ? escapeHtml(board.category || '') : '') + '">'
+        + '<input type="text" class="notice-form-input" id="clFormTags" placeholder="標籤，逗號分隔" value="' + (isEdit && board.tags ? escapeHtml(board.tags.join(',')) : '') + '">'
+        + '<div style="font-size:13px;color:#94a3b8;margin-bottom:8px;">顏色</div>'
+        + '<div class="color-picker" id="clFormColorPicker">' + colorsHtml + '</div>'
+        + '<div class="notice-form-buttons" style="margin-top:16px;">'
+        + '<button class="btn btn-secondary" id="clFormCancel">取消</button>'
+        + '<button class="btn btn-primary" id="clFormSave">' + (isEdit ? '儲存' : '新增') + '</button>'
+        + '</div></div>';
+    document.body.appendChild(overlay);
+
+    let selectedColor = isEdit ? board.color : '#38bdf8';
+    document.getElementById('clFormColorPicker').querySelectorAll('.color-swatch').forEach(el => {
+        el.addEventListener('click', function() {
+            document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+            this.classList.add('selected');
+            selectedColor = this.dataset.color;
+        });
+    });
+
+    document.getElementById('clFormCancel').addEventListener('click', () => overlay.remove());
+    document.getElementById('clFormSave').addEventListener('click', () => {
+        const title = document.getElementById('clFormTitle').value.trim();
+        if (!title) {
+            APP.showStatusMsg('❌ 標題不能為空');
+            return;
+        }
+        const category = document.getElementById('clFormCategory').value.trim();
+        const tagsStr = document.getElementById('clFormTags').value.trim();
+        const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
+        if (isEdit) {
+            const b = APP.state.checklists.find(b => b.id === board.id);
+            if (b) {
+                b.title = title;
+                b.category = category;
+                b.tags = tags;
+                b.color = selectedColor;
+                saveToStorage('vcc_checklists', APP.state.checklists);
+                sendWsMessage({type: 'checklistboard-edit', room: APP.state.room, id: b.id, title, category, tags, color: selectedColor});
+                renderChecklistBoards();
+                APP.showStatusMsg('✅ 檢查清單已更新');
+            }
+        } else {
+            if (!APP.state.connected || !APP.state.room) {
+                APP.showStatusMsg('❌ 請先建立連線');
+                return;
+            }
+            const newBoard = {
+                id: crypto.randomUUID(),
+                title: title,
+                category: category,
+                tags: tags,
+                color: selectedColor,
+                pinned: false,
+                createdBy: APP.state.displayName,
+                createdAt: Date.now(),
+                items: []
+            };
+            APP.state.checklists.push(newBoard);
+            saveToStorage('vcc_checklists', APP.state.checklists);
+            sendWsMessage({type: 'checklistboard-create', room: APP.state.room, board: newBoard});
+            renderChecklistBoards();
+            APP.showStatusMsg('✅ 檢查清單已新增');
+        }
+        overlay.remove();
+    });
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+    document.getElementById('clFormTitle').focus();
+}
+
+function addChecklistItem(checklistId, text) {
     if (!APP.state.connected || !APP.state.room) {
         APP.showStatusMsg('❌ 請先建立連線');
         return;
     }
+    const board = APP.state.checklists.find(b => b.id === checklistId);
+    if (!board) return;
     const newItem = {
         id: crypto.randomUUID(),
         text: text.trim(),
@@ -1759,63 +2094,58 @@ function addChecklistItem(text) {
         timestamp: Date.now(),
         checkedAt: null
     };
-    APP.state.checklistItems.push(newItem);
-    saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    sendWsMessage({type: 'checklist-add', room: APP.state.room, item: newItem});
-    renderChecklist();
+    board.items.push(newItem);
+    saveToStorage('vcc_checklists', APP.state.checklists);
+    sendWsMessage({type: 'checklist-add', room: APP.state.room, checklistId, item: newItem});
+    renderChecklistBoards();
 }
 
-function toggleChecklistItem(id) {
-    const item = APP.state.checklistItems.find(i => i.id === id);
+function toggleChecklistItem(checklistId, itemId) {
+    const board = APP.state.checklists.find(b => b.id === checklistId);
+    if (!board) return;
+    const item = board.items.find(i => i.id === itemId);
     if (!item) return;
     item.checked = !item.checked;
     item.checkedAt = item.checked ? Date.now() : null;
-    saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    sendWsMessage({type: 'checklist-toggle', room: APP.state.room, id, checked: item.checked, checkedAt: item.checkedAt});
-    renderChecklist();
+    saveToStorage('vcc_checklists', APP.state.checklists);
+    sendWsMessage({type: 'checklist-toggle', room: APP.state.room, checklistId, id: itemId, checked: item.checked, checkedAt: item.checkedAt});
+    renderChecklistBoards();
 }
 
-async function deleteChecklistItem(id) {
+async function deleteChecklistItem(checklistId, itemId) {
     if (!await showConfirmDialog('確定刪除此項目？')) return;
-    APP.state.checklistItems = APP.state.checklistItems.filter(i => i.id !== id);
-    saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    sendWsMessage({type: 'checklist-delete', room: APP.state.room, id});
-    renderChecklist();
+    const board = APP.state.checklists.find(b => b.id === checklistId);
+    if (!board) return;
+    board.items = board.items.filter(i => i.id !== itemId);
+    saveToStorage('vcc_checklists', APP.state.checklists);
+    sendWsMessage({type: 'checklist-delete', room: APP.state.room, checklistId, id: itemId});
+    renderChecklistBoards();
 }
 
-function mergeIncomingChecklistItem(incoming) {
-    const exists = APP.state.checklistItems.some(i => i.id === incoming.id);
-    if (!exists) {
-        APP.state.checklistItems.push(incoming);
-    }
+function togglePinChecklist(checklistId) {
+    const board = APP.state.checklists.find(b => b.id === checklistId);
+    if (!board) return;
+    board.pinned = !board.pinned;
+    saveToStorage('vcc_checklists', APP.state.checklists);
+    sendWsMessage({type: 'checklistboard-pin', room: APP.state.room, id: checklistId, pinned: board.pinned});
+    renderChecklistBoards();
 }
 
-function mergeChecklistItems(incomingItems) {
-    for (const item of incomingItems) {
-        mergeIncomingChecklistItem(item);
-    }
+async function deleteChecklistBoard(checklistId) {
+    if (!await showConfirmDialog('確定刪除此檢查清單？（所有項目也將刪除）')) return;
+    APP.state.checklists = APP.state.checklists.filter(b => b.id !== checklistId);
+    saveToStorage('vcc_checklists', APP.state.checklists);
+    sendWsMessage({type: 'checklistboard-delete', room: APP.state.room, id: checklistId});
+    renderChecklistBoards();
 }
 
-// --- Load persisted checklist ---
-(function() {
-    const savedItems = loadFromStorage('vcc_checklist_items', []);
-    APP.state.checklistItems = savedItems;
-    renderChecklist();
-    // Wire up add bar
-    const input = document.getElementById('checklistInput');
-    const addBtn = document.getElementById('btnChecklistAdd');
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            addChecklistItem(input.value);
-            input.value = '';
-        }
-    });
-    addBtn.addEventListener('click', () => {
-        addChecklistItem(input.value);
-        input.value = '';
-    });
-})();
+// ========== Checklist v2 Init ==========
+APP.state.checklists = loadFromStorage('vcc_checklists', []);
+renderChecklistBoards();
 
+document.getElementById('btnNewChecklist').addEventListener('click', () => {
+    showChecklistForm();
+});
 // ========== File Transfer ===
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 B';
