@@ -23,11 +23,18 @@ room_data = {}
 
 CHAT_RETENTION_DAYS = 7    # How long to keep chat backups (adjustable)
 DATA_FILE = "vcc_server_state.json"
+DEBUG = True   # Toggle verbose debug output
 
 
 def _log(category, message):
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{ts}] [{category}] {message}")
+
+
+def _debug(message):
+    if DEBUG:
+        ts = datetime.now(timezone.utc).strftime('%H:%M:%S.%f')[:12]
+        print(f"  └─ [{ts}] {message}")
 
 
 def _load_state():
@@ -88,12 +95,14 @@ async def handler(websocket):
         async for message in websocket:
             data = json.loads(message)
             msg_type = data.get("type")
+            _debug(f"← RX type={msg_type} room={data.get('room','?')} from={my_peer_id}")
 
             if msg_type == "generate":
                 code = str(random.randint(1000, 9999))
                 while code in rooms:
                     code = str(random.randint(1000, 9999))
                 await websocket.send(json.dumps({"type": "generated", "room": code}))
+                _debug(f"→ TX generated room={code}")
 
             elif msg_type == "join":
                 rid = data.get("room")
@@ -131,6 +140,7 @@ async def handler(websocket):
                     "room": room_id,
                     "peerId": my_peer_id,
                 }))
+                _debug(f"→ TX joined room={room_id} peerId={my_peer_id}")
 
                 # If others are in the room, send room_peers to joiner
                 # and peer_joined to all existing members
@@ -144,6 +154,7 @@ async def handler(websocket):
                         "type": "room_peers",
                         "peers": peers_list,
                     }))
+                    _debug(f"→ TX room_peers count={len(peers_list)} to={my_peer_id}")
 
                     # Notify all existing peers
                     _broadcast(
@@ -171,6 +182,7 @@ async def handler(websocket):
                     ws = rooms[rid][target]["ws"]
                     try:
                         await ws.send(json.dumps(out))
+                        _debug(f"→ TX {msg_type} to={target} from={my_peer_id}")
                     except websockets.exceptions.ConnectionClosed:
                         pass
                 elif not target and len(rooms[rid]) == 2:
@@ -184,6 +196,7 @@ async def handler(websocket):
                             }
                             try:
                                 await info["ws"].send(json.dumps(out))
+                                _debug(f"→ TX {msg_type} to={pid} from={my_peer_id} (2-peer compat)")
                             except websockets.exceptions.ConnectionClosed:
                                 pass
                             break
@@ -505,12 +518,15 @@ async def handler(websocket):
                     await websocket.send(json.dumps({"type": "error", "message": "room not found"}))
                     continue
                 _ensure_room_data(rid)
+                posts_count = len(room_data[rid].get("noticePosts", []))
+                boards_count = len(room_data[rid].get("checklists", []))
                 await websocket.send(json.dumps({
                     "type": "room-state",
                     "noticePosts": room_data[rid].get("noticePosts", []),
                     "checklists": room_data[rid].get("checklists", []),
                 }))
                 _log('STATE', f'{my_peer_id} requested state in {rid}')
+                _debug(f"→ TX room-state: {posts_count} posts, {boards_count} boards to {my_peer_id}")
 
             elif msg_type == "chat-history":
                 rid = data.get("room")
@@ -539,7 +555,13 @@ async def handler(websocket):
             elif msg_type == "dump":
                 iso_ts = datetime.now(timezone.utc).isoformat()
                 rooms_diag = {}
+                total_notices = 0
+                total_boards = 0
                 for rid_key, rdata in room_data.items():
+                    n = len(rdata.get("noticePosts", []))
+                    b = len(rdata.get("checklists", []))
+                    total_notices += n
+                    total_boards += b
                     rooms_diag[rid_key] = {
                         "peerCount": len(rooms.get(rid_key, {})),
                         "noticePosts": rdata.get("noticePosts", []),
@@ -554,19 +576,24 @@ async def handler(websocket):
                     "rooms": rooms_diag,
                 }))
                 _log('DUMP', f'Dump requested by {my_peer_id}')
+                _debug(f"→ TX dump: {len(room_data)} rooms, {total_notices} notices, {total_boards} boards")
 
     except websockets.exceptions.ConnectionClosed:
+        _debug(f"WebSocket connection closed for {my_peer_id}")
         pass
     finally:
         if room_id and room_id in rooms and my_peer_id:
             rooms[room_id].pop(my_peer_id, None)
             peer_ids.discard(my_peer_id)
             if rooms[room_id]:
+                remaining = len(rooms[room_id])
+                _debug(f"peer_left broadcast: {my_peer_id} left, {remaining} remaining in {room_id}")
                 _broadcast(
                     rooms[room_id],
                     {"type": "peer_left", "peerId": my_peer_id},
                 )
             else:
+                _debug(f"Room {room_id} now empty, deleting")
                 del rooms[room_id]
 
         _log('DISCONNECT', f'{my_peer_id} disconnected (room: {room_id})')
@@ -575,20 +602,30 @@ async def handler(websocket):
 def _broadcast(room_peers, message, exclude=None):
     """Send a message to all peers in a room, optionally excluding one."""
     payload = json.dumps(message)
+    target_ids = []
     for info in room_peers.values():
         if exclude and info["ws"] == exclude:
             continue
+        target_ids.append('?')
         try:
             asyncio.create_task(info["ws"].send(payload))
         except websockets.exceptions.ConnectionClosed:
             pass
+    if DEBUG:
+        mtype = message.get("type", "?")
+        _debug(f"→ TX broadcast type={mtype} to={len(target_ids)} peers")
 
 
 async def main():
     _load_state()
     _migrate_room_data()
+    total_notices = sum(len(r.get("noticePosts", [])) for r in room_data.values())
+    total_boards = sum(len(r.get("checklists", [])) for r in room_data.values())
+    total_chats = sum(len(r.get("chatMessages", [])) for r in room_data.values())
     _log('STARTUP', f'Loaded {len(room_data)} rooms from {DATA_FILE}')
+    _log('STARTUP', f'Data: {total_notices} notices, {total_boards} boards, {total_chats} chat backups')
     _log('STARTUP', f'Chat retention: {CHAT_RETENTION_DAYS} days')
+    _log('STARTUP', f'DEBUG mode: {"ON" if DEBUG else "OFF"}')
     _log('STARTUP', 'listening on ws://localhost:8765')
 
     loop = asyncio.get_running_loop()
