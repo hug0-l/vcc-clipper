@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **NTP 驗證可視化** — 管理面板偏移量以 🟢 綠色（正常）/ 🔴 紅色（無回應）顯示，hover 可查看 tooltip
 - **NTP 儲存時即時驗證** — 儲存 NTP 伺服器後即顯示連線成功或失敗的明確訊息
 - **內建 HTTP Server** — 伺服器自動在 port 8766 提供 `clipper.html` 及靜態檔案，無需手動開啟檔案
+- **WebSocket 重連遺失顯示名稱** — `autoReconnect()`、toast 重連按鈕、`generated` 處理器現在傳送 `displayName`，避免 peer-list 顯示 peerId 而非名稱
+- **顯示名稱變更未通知伺服器** — 內嵌編輯顯示名稱時自動發送 `register-name`，peer-list 即時更新
+- **線上用戶列表改善** — 顯示 peerId 在名稱旁方便辨識；`isSelf` 判斷改為純 peerId 比對
+- **程式碼審查修復** — 修復 5 個潛在 bug（dead code、重複 WS 連線、`setChecklistReminder` 未定義變數、重複 debug dump 監聽器、case 格式錯誤）
 
 ## [1.1.0] — 2026-06-19
 
