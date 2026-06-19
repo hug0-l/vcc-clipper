@@ -16,7 +16,6 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 14px;
     line-height: 1.5;
-    min-width: 800px;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -119,14 +118,21 @@ nav {
 }
 main {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 20px;
+}
+@media (max-width: 600px) {
+    main { padding: 10px; }
 }
 .tab-pane {
     display: none;
 }
 .tab-pane.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
     animation: fadeIn 0.2s ease;
 }
 @keyframes fadeIn {
@@ -154,6 +160,20 @@ footer {
     gap: 10px;
     border-top: 1px solid #1e293b;
     flex-wrap: wrap;
+}
+
+/* Responsive: shrink header elements on narrow windows */
+@media (max-width: 700px) {
+    header { gap: 8px; padding: 8px 10px; flex-wrap: wrap; justify-content: center; }
+    header h1 { font-size: 15px; }
+    .clock-time { font-size: 16px; }
+    .clock-date { display: none; }
+    nav { padding: 0 4px; overflow-x: auto; }
+    .tab-btn { padding: 8px 10px; font-size: 12px; white-space: nowrap; }
+    .room-code { font-size: 11px; }
+    .server-url { width: 140px !important; }
+    footer { padding: 8px 10px; }
+    footer input[type="text"] { width: 80px; }
 }
 footer label {
     color: #94a3b8;
@@ -366,7 +386,7 @@ footer input[type="text"] {
     color: #475569;
 }
 /* --- Chat Room Styles --- */
-.chat-container { display:flex; flex-direction:column; height:calc(100vh - 200px); max-width:700px; margin:0 auto; }
+.chat-container { display:flex; flex-direction:column; max-width:700px; margin:0 auto; min-height:0; flex:1; }
 .chat-messages { flex:1; overflow-y:auto; padding:12px; background:#0f172a; border-radius:8px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px; }
 .chat-msg { padding:8px 12px; border-radius:8px; max-width:80%; word-break:break-word; line-height:1.5; }
 .chat-msg.self { align-self:flex-end; background:#1d4ed8; color:#fff; }
