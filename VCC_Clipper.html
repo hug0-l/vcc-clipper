@@ -162,29 +162,32 @@ footer {
     flex-wrap: wrap;
 }
 
-/* Adaptive: layout wraps & stacks instead of shrinking fonts */
+/* Adaptive: keep all text visible, wrap & compact instead of hiding */
 @media (max-width: 800px) {
-    header { flex-wrap: wrap; padding: 8px 12px; row-gap: 4px; }
-    header h1 { width: 100%; text-align: center; font-size: 16px; }
-    .clock-date { display: none; }
-    .display-name-label { display: none; }
+    header { flex-wrap: wrap; padding: 6px 10px; gap: 4px 10px; }
+    header h1 { font-size: 15px; white-space: nowrap; }
+    .status-badge { font-size: 12px; padding: 2px 8px; }
+    .clock-time { font-size: 15px; }
+    .clock-date { font-size: 10px; display: inline; margin-left: 4px; }
+    .peer-count { font-size: 12px; }
+    .display-name-label { font-size: 11px !important; }
+    .display-name-span { font-size: 12px; padding: 2px 6px; }
+    .room-code { font-size: 11px; }
     nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tab-btn { font-size: 13px; padding: 8px 12px; flex-shrink: 0; }
-    .pairing-code input { width: 80px; }
-    .server-url { width: 140px !important; }
+    .tab-btn { font-size: 13px; padding: 8px 10px; flex-shrink: 0; }
+    .chat-msg { max-width: 90%; }
 }
 @media (max-width: 500px) {
-    header h1 { font-size: 14px; }
-    .status-badge { font-size: 11px; padding: 2px 8px; }
-    .clock-time { font-size: 16px; }
-    .peer-count { font-size: 11px; }
-    .room-code { font-size: 11px; }
-    .tab-btn { font-size: 12px; padding: 6px 8px; }
-    .pairing-controls { display: flex; flex-wrap: wrap; gap: 4px; }
-    .pairing-code { display: flex; gap: 4px; }
-    .pairing-code input { width: 70px; }
+    header h1 { font-size: 13px; }
+    .status-badge { font-size: 11px; padding: 2px 6px; }
+    .clock-time { font-size: 13px; }
+    .clock-date { font-size: 9px; }
+    .display-name-label { font-size: 10px !important; }
+    .display-name-span { font-size: 11px; }
+    .tab-btn { font-size: 11px; padding: 6px 6px; }
     .server-url { width: 100px !important; }
-    footer input[type="text"] { width: 70px; }
+    footer input[type="text"] { width: 60px; }
+    .pairing-code input { width: 60px; }
     .chat-msg { max-width: 95%; }
 }
 footer label {
