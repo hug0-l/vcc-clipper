@@ -4013,9 +4013,8 @@ function updateFileUI() {
                 // Cancel outgoing: remove from queue + stop sending
                 APP.state.fileQueue = APP.state.fileQueue.filter(f => f.fileId !== fileId);
                 for (const [pid, entry] of APP.state.fileSending) {
-                    if (entry.fileId === fileId) {
+                    if (entry.fileId === fileId || entry.fileId.startsWith(fileId + '-')) {
                         APP.state.fileSending.delete(pid);
-                        break;
                     }
                 }
                 updateFileUI();
@@ -4303,11 +4302,15 @@ async function sendNextFile() {
         return;
     }
     // Launch per-peer sends in parallel
+    // Clean up old done/error fileSending entries first
+    for (const [pid, e] of APP.state.fileSending) {
+        if (e.status === 'done' || e.status === 'error' || e.status === 'cancelled') {
+            APP.state.fileSending.delete(pid);
+        }
+    }
     const promises = [];
     for (const pid of targets) {
-        if (!APP.state.fileSending.has(pid)) {
-            promises.push(sendFileToPeer(entry, pid));
-        }
+        promises.push(sendFileToPeer(entry, pid));
     }
     await Promise.all(promises);
     entry.status = 'done';
