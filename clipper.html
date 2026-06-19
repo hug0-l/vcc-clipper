@@ -1084,19 +1084,6 @@ footer input[type="text"] {
                 </div>
             </div>
             <div class="settings-section" style="margin-top:20px;">
-                <h3 style="font-size:18px;font-weight:500;margin-bottom:12px;">🌐 STUN 伺服器</h3>
-                <div style="display:flex;flex-direction:column;gap:8px;">
-                    <div style="padding:8px 12px;background:#1e293b;border-radius:8px;">
-                        <label for="stunServer" style="color:#94a3b8;display:block;margin-bottom:4px;">STUN 伺服器位址</label>
-                        <div style="display:flex;gap:6px;">
-                            <input type="text" id="stunServer" class="notice-form-input" value="stun:stun.l.google.com:19302" style="flex:1;">
-                            <button class="btn btn-secondary" id="btnSaveStun" style="font-size:12px;padding:4px 10px;">儲存</button>
-                        </div>
-                        <div style="font-size:11px;color:#475569;margin-top:4px;">修改後下次建立 P2P 連線時生效。支援多個（逗號分隔）</div>
-                    </div>
-                </div>
-            </div>
-            <div class="settings-section" style="margin-top:20px;">
                 <h3 style="font-size:18px;font-weight:500;margin-bottom:12px;">👥 在線用戶</h3>
                 <div id="onlineUserList" style="padding:8px 12px;background:#1e293b;border-radius:8px;font-size:14px;line-height:1.8;min-height:30px;color:#64748b;">
                     <div id="onlineUserPlaceholder" style="color:#475569;">載入中...</div>
@@ -1169,6 +1156,13 @@ footer input[type="text"] {
                             <div style="display:flex;gap:6px;align-items:center;">
                                 <input type="number" id="adminConfigRetention" style="width:60px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:14px;font-family:inherit;text-align:center;"> <span style="color:#64748b;font-size:12px;">天</span>
                                 <button class="btn btn-secondary" id="btnSaveConfig" style="font-size:11px;padding:3px 8px;">儲存</button>
+                            </div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1e293b;border-radius:8px;">
+                            <span style="color:#94a3b8;">STUN 伺服器</span>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <input type="text" id="adminStunServer" style="width:220px;background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:14px;font-family:inherit;">
+                                <button class="btn btn-secondary" id="btnSaveAdminStun" style="font-size:11px;padding:3px 8px;">儲存</button>
                             </div>
                         </div>
                         <div style="padding:10px 14px;background:#1e293b;border-radius:8px;color:#64748b;font-size:13px;">
@@ -1355,6 +1349,7 @@ const APP = {
         _lastClientTime: 0,
         ntpEnabled: false,
         ntpServer: 'stdtime.gov.hk',
+        stunServer: 'stun:stun.l.google.com:19302',
     },
     updateStatus(status) {
         const badge = document.getElementById('statusBadge');
@@ -2418,8 +2413,7 @@ function startWebRTCPeer(targetPeerId, isInitiator, remoteOffer) {
 
     APP.updateStatus('connecting');
 
-    const stunUrls = loadFromStorage('vcc_stun_server', 'stun:stun.l.google.com:19302');
-    const pc = new RTCPeerConnection({iceServers: [{urls: stunUrls}]});
+    const pc = new RTCPeerConnection({iceServers: [{urls: APP.state.stunServer || 'stun:stun.l.google.com:19302'}]});
 
     if (isInitiator) {
         const dc = pc.createDataChannel('vcc', {ordered: true});
@@ -4119,12 +4113,7 @@ function updateSettingsView() {
         }
     }
     if (roomEl) roomEl.textContent = APP.state.room || '---';
-    // Load STUN server into input
-    const stunInput = document.getElementById('stunServer');
-    if (stunInput && !stunInput.dataset.loaded) {
-        stunInput.value = loadFromStorage('vcc_stun_server', 'stun:stun.l.google.com:19302');
-        stunInput.dataset.loaded = '1';
-    }
+
     // Update time source indicator in admin panel
     const tsEl = document.getElementById('adminTimeSource');
     if (tsEl) {
@@ -4160,16 +4149,7 @@ setInterval(() => {
     updateTransportUI();
 }, 2000);
 
-// STUN server save handler
-document.getElementById('btnSaveStun')?.addEventListener('click', () => {
-    const val = document.getElementById('stunServer').value.trim();
-    if (!val) {
-        APP.showStatusMsg('❌ STUN 伺服器位址不能為空');
-        return;
-    }
-    saveToStorage('vcc_stun_server', val);
-    APP.showStatusMsg('✅ STUN 伺服器已儲存，下次建立連線時生效');
-});
+
 
 // ========== Admin Panel ==========
 let _adminPassword = '';
@@ -4221,6 +4201,7 @@ function handleAdminMessage(data) {
                 const offsetEl = document.getElementById('adminNtpOffset');
                 if (offsetEl && data.serverInfo.ntpOffset !== undefined) offsetEl.textContent = data.serverInfo.ntpOffset + 's';
                 document.getElementById('adminUptime').textContent = data.serverInfo.uptime ? Math.floor(data.serverInfo.uptime / 3600) + ' 小時 ' + Math.floor((data.serverInfo.uptime % 3600) / 60) + ' 分' : '---';
+                if (data.serverInfo.stunServer) APP.state.stunServer = data.serverInfo.stunServer;
                 document.getElementById('adminActiveRooms').textContent = data.serverInfo.activeRooms || 0;
                 document.getElementById('adminActivePeers').textContent = data.serverInfo.activePeers || 0;
                 document.getElementById('adminDataRooms').textContent = data.serverInfo.dataRooms || 0;
@@ -4258,6 +4239,12 @@ function handleAdminMessage(data) {
         if (data.config) {
             document.getElementById('adminConfigRetention').value = data.config.chatRetentionDays || 7;
             document.getElementById('adminLogPath').textContent = data.config.dataFile || '---';
+            // STUN server
+            const adminStunEl = document.getElementById('adminStunServer');
+            if (adminStunEl && data.config.stunServer) {
+                adminStunEl.value = data.config.stunServer;
+                APP.state.stunServer = data.config.stunServer;
+            }
             // NTP settings
             const ntpToggle = document.getElementById('adminNtpToggle');
             if (ntpToggle) {
@@ -4363,6 +4350,14 @@ document.getElementById('btnSaveNtp')?.addEventListener('click', () => {
     const server = document.getElementById('adminNtpServer').value.trim();
     if (!server) { APP.showStatusMsg('❌ 請輸入 NTP 伺服器位址'); return; }
     sendWsMessage({type: 'ntp-config', token: _adminToken, ntpServer: server, ntpEnabled: true});
+});
+
+// Admin STUN server save
+document.getElementById('btnSaveAdminStun')?.addEventListener('click', () => {
+    if (!_adminToken) return;
+    const server = document.getElementById('adminStunServer').value.trim();
+    if (!server) { APP.showStatusMsg('❌ STUN 伺服器位址不能為空'); return; }
+    sendWsMessage({type: 'admin-set-config', token: _adminToken, config: {stunServer: server}});
 });
 
 // Export/Import dump

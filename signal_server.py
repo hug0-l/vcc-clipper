@@ -32,7 +32,7 @@ LOG_DIR = "logs"
 LOG_RETENTION_HOURS = 24
 DEFAULT_ADMIN_PASSWORD = "12345"
 DEBUG = True   # Toggle verbose debug output
-_config = {"chatRetentionDays": CHAT_RETENTION_DAYS}  # mutable config for runtime changes
+_config = {"chatRetentionDays": CHAT_RETENTION_DAYS, "stunServer": "stun:stun.l.google.com:19302"}  # mutable config for runtime changes
 _ntp_config = {"server": "stdtime.gov.hk", "offset": 0.0, "enabled": True}
 _sessions = {}  # token -> {"createdAt": timestamp}
 _login_attempts = {}  # websocket_id -> {"count": int, "first": timestamp}
@@ -793,6 +793,7 @@ async def handler(websocket):
                     "ntpServer": _ntp_config["server"],
                     "ntpEnabled": _ntp_config["enabled"],
                     "ntpOffset": round(_ntp_config["offset"], 3),
+                            "stunServer": _config["stunServer"],
                 }))
 
             elif msg_type == "register-name":
@@ -886,6 +887,7 @@ async def handler(websocket):
                             "ntpServer": _ntp_config["server"],
                             "ntpEnabled": _ntp_config["enabled"],
                             "ntpOffset": round(_ntp_config["offset"], 3),
+                            "stunServer": _config["stunServer"],
                         }
                     }))
                     _log('ADMIN', f'{my_peer_id} logged in successfully')
@@ -941,6 +943,7 @@ async def handler(websocket):
                         "ntpServer": _ntp_config["server"],
                         "ntpEnabled": _ntp_config["enabled"],
                         "ntpOffset": round(_ntp_config["offset"], 3),
+                            "stunServer": _config["stunServer"],
                     }
                 }))
 
@@ -952,6 +955,8 @@ async def handler(websocket):
                 # Only allow safe overrides (use mutable dict to avoid global issues)
                 if "chatRetentionDays" in cfg:
                     _config["chatRetentionDays"] = int(cfg["chatRetentionDays"])
+                if "stunServer" in cfg:
+                    _config["stunServer"] = str(cfg["stunServer"])
                 await websocket.send(json.dumps({"type": "admin-set-config-result", "success": True, "message": "設定已更新"}))
                 _log('ADMIN', f'{my_peer_id} updated server config')
 
