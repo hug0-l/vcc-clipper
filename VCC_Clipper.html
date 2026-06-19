@@ -119,11 +119,19 @@ nav {
 main {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    padding: 0;
+}
+.main-content {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 20px;
 }
 @media (max-width: 600px) {
-    main { padding: 10px; }
+    .main-content { padding: 10px; }
 }
 .tab-pane {
     display: none;
@@ -138,6 +146,61 @@ main {
 @keyframes fadeIn {
     from { opacity: 0.3; }
     to { opacity: 1; }
+}
+/* Notice board sidebar — always visible when width permits */
+.notice-sidebar {
+    width: 320px;
+    min-width: 320px;
+    border-left: 1px solid #1e293b;
+    overflow-y: auto;
+    padding: 16px;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
+}
+.notice-sidebar .notice-container {
+    max-width: none;
+    margin: 0;
+}
+.notice-sidebar .notice-header {
+    margin-bottom: 12px;
+}
+.notice-sidebar .notice-header h2 {
+    font-size: 18px;
+}
+.notice-sidebar .notice-card {
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.notice-sidebar .notice-card .notice-card-header {
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.notice-sidebar .notice-card .notice-card-title {
+    font-size: 14px;
+}
+.notice-sidebar .notice-card .category-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+}
+.notice-sidebar .notice-card .tag-badge {
+    font-size: 9px;
+}
+.notice-sidebar .notice-card .notice-card-content {
+    font-size: 13px;
+    margin-top: 4px;
+}
+.notice-sidebar .notice-card .btn-icon {
+    font-size: 12px;
+    padding: 2px 4px;
+}
+@media (min-width: 951px) {
+    .notice-sidebar { display: flex; }
+    /* Hide noticeboard tab pane when sidebar is visible (avoids duplication) */
+    .tab-pane[data-tab="noticeboard"] { display: none !important; }
+}
+@media (max-width: 950px) {
+    .notice-sidebar { display: none; }
 }
 .pane-placeholder {
     display: flex;
@@ -777,6 +840,7 @@ footer input[type="text"] {
 </nav>
 
 <main>
+    <div class="main-content">
     <div id="errorToast" class=""></div>
     <div id="popupContainer"></div>
     <section class="tab-pane active" data-tab="clipboard">
@@ -921,6 +985,16 @@ footer input[type="text"] {
             </p>
         </div>
     </section>
+    </div><!-- /main-content -->
+    <div class="notice-sidebar" id="noticeSidebar">
+        <div class="notice-container">
+            <div class="notice-header">
+                <h2>📋 公告欄</h2>
+                <button class="btn btn-primary" id="btnNewPostSidebar" style="font-size:12px;padding:4px 10px;">✏️ 新增</button>
+            </div>
+            <div class="notice-list" id="noticeListSidebar"></div>
+        </div>
+    </div>
 </main>
 
 <footer>
@@ -1149,7 +1223,13 @@ function mergeNoticePosts(incoming) {
 }
 
 function renderNoticeBoard() {
+    // Render to both tab pane and sidebar
     const list = document.getElementById('noticeList');
+    const sidebarList = document.getElementById('noticeListSidebar');
+    [list, sidebarList].forEach(container => renderNoticeBoardInner(container));
+}
+
+function renderNoticeBoardInner(list) {
     if (!list) return;
     const sorted = [...APP.state.noticePosts].sort((a, b) => {
         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -3081,6 +3161,9 @@ APP.state.noticePosts = loadFromStorage('vcc_notice_posts', []);
 renderNoticeBoard();
 
 document.getElementById('btnNewPost').addEventListener('click', () => {
+    showNoticeForm();
+});
+document.getElementById('btnNewPostSidebar')?.addEventListener('click', () => {
     showNoticeForm();
 });
 
