@@ -642,14 +642,14 @@ footer input[type="text"] {
 .notice-card-title {
     font-weight: 600;
     flex: 1;
-    font-size:19px;
+    font-size:24px;
 }
 .pin-badge {
     font-size:16px;
     color: #fbbf24;
 }
 .notice-card-meta {
-    font-size:15px;
+    font-size:19px;
     color: #64748b;
     margin-bottom: 8px;
 }
@@ -658,6 +658,7 @@ footer input[type="text"] {
     word-break: break-word;
     color: #cbd5e1;
     line-height: 1.6;
+    font-size:19px;
     margin-bottom: 10px;
 }
 .notice-card-actions {
@@ -1373,7 +1374,7 @@ function renderNoticeBoard() {
             const tagsHtml = (post.tags && post.tags.length) ? post.tags.slice(0,2).map(t => '<span class="tag-badge" style="font-size:9px;">' + escapeHtml(t) + '</span>').join('') : '';
             return '<div class="notice-card' + (post.pinned ? ' pinned' : '') + '" style="border-left-color:' + catColor + ';padding:10px 12px;">'
                 + '<div class="notice-card-header" style="margin-bottom:4px;">'
-                + '<div class="notice-card-title" style="font-size:14px;">' + categoryBadge + escapeHtml(post.title) + '</div>'
+                + '<div class="notice-card-title" style="font-size:18px;">' + categoryBadge + escapeHtml(post.title) + '</div>'
                 + (post.pinned ? '<span class="pin-badge" style="font-size:12px;">📌</span>' : '')
                 + '</div>'
                 + '<div class="notice-card-meta" style="font-size:11px;margin-bottom:2px;">' + escapeHtml(post.author) + ' · ' + timeStr + '</div>'
@@ -1481,7 +1482,7 @@ function renderNoticeBoardSidebar() {
         const badge = catLabel ? '<span class="category-badge" style="background:' + catColor + ';font-size:10px;padding:1px 6px;">' + escapeHtml(catLabel) + '</span>' : '';
         return '<div class="notice-card' + (post.pinned ? ' pinned' : '') + '" style="border-left-color:' + catColor + ';padding:10px 12px;">'
             + '<div class="notice-card-header" style="margin-bottom:4px;">'
-            + '<div class="notice-card-title" style="font-size:14px;">' + badge + escapeHtml(post.title) + '</div>'
+            + '<div class="notice-card-title" style="font-size:18px;">' + badge + escapeHtml(post.title) + '</div>'
             + (post.pinned ? '<span style="font-size:12px;">📌</span>' : '')
             + '</div>'
             + '<div style="font-size:11px;color:#64748b;">' + escapeHtml(post.author) + ' · ' + timeStr + '</div>'
@@ -1621,7 +1622,7 @@ function editNoticePost(id, title, content, category, tagsString) {
 
 async function deleteNoticePost(id) {
     const post = APP.state.noticePosts.find(p => p.id === id);
-    if (!post) return;
+    if (!post) { APP.showStatusMsg('❌ 找不到該公告'); return; }
     let msg = '確定刪除此公告？';
     if (post.category === '重要') {
         msg = '⚠️ 此為【重要】公告！' + msg;
@@ -2824,8 +2825,12 @@ function addChecklistItem(checklistId, text) {
         APP.showStatusMsg('❌ 請先建立連線');
         return;
     }
+    if (!text || !text.trim()) {
+        APP.showStatusMsg('💡 請輸入待辦事項內容');
+        return;
+    }
     const board = APP.state.checklists.find(b => b.id === checklistId);
-    if (!board) return;
+    if (!board) { APP.showStatusMsg('❌ 找不到該檢查清單'); return; }
     const newItem = {
         id: crypto.randomUUID(),
         text: text.trim(),
@@ -2864,7 +2869,7 @@ async function deleteChecklistItem(checklistId, itemId) {
 
 function togglePinChecklist(checklistId) {
     const board = APP.state.checklists.find(b => b.id === checklistId);
-    if (!board) return;
+    if (!board) { APP.showStatusMsg('❌ 找不到該檢查清單'); return; }
     board.pinned = !board.pinned;
     saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
     sendWsMessage({type: 'checklistboard-pin', room: APP.state.room, id: checklistId, pinned: board.pinned});
@@ -2872,7 +2877,9 @@ function togglePinChecklist(checklistId) {
 }
 
 async function deleteChecklistBoard(checklistId) {
-    if (!await showConfirmDialog('確定刪除此檢查清單？（所有項目也將刪除）')) return;
+    const b = APP.state.checklists.find(b => b.id === checklistId);
+    if (!b) { APP.showStatusMsg('❌ 找不到該檢查清單'); return; }
+    if (!await showConfirmDialog('確定刪除「' + b.title + '」？（所有項目也將刪除）')) return;
     APP.state.checklists = APP.state.checklists.filter(b => b.id !== checklistId);
     saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
     sendWsMessage({type: 'checklistboard-delete', room: APP.state.room, id: checklistId});
@@ -2881,9 +2888,9 @@ async function deleteChecklistBoard(checklistId) {
 
 function resetChecklistBoard(checklistId) {
     const board = APP.state.checklists.find(b => b.id === checklistId);
-    if (!board) return;
+    if (!board) { APP.showStatusMsg('❌ 找不到該檢查清單'); return; }
     const checkedCount = board.items.filter(i => i.checked).length;
-    if (checkedCount === 0) return;
+    if (checkedCount === 0) { APP.showStatusMsg('💡 沒有已勾選的項目需要重設'); return; }
     for (const item of board.items) {
         item.checked = false;
         item.checkedAt = null;
@@ -3038,6 +3045,10 @@ function updateFileUI() {
 function handleFiles(fileList) {
     if (!APP.state.connected) {
         APP.showStatusMsg('❌ 請先建立連線');
+        return;
+    }
+    if (APP.state.selectedTargetPeerIds.size === 0) {
+        APP.showStatusMsg('💡 請先在檔案傳送區域選取傳送對象');
         return;
     }
     for (const file of fileList) {
@@ -3354,7 +3365,7 @@ function handleFileDone(msg, fromPeerId) {
 function sendChatMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
-    if (!text) return;
+    if (!text) { APP.showStatusMsg('💡 請輸入訊息內容'); return; }
     if (!APP.state.connected) {
         APP.showStatusMsg('❌ 請先建立連線');
         return;
