@@ -3487,7 +3487,10 @@ async function sendFileToPeer(entry, pid) {
         const CHUNK_SIZE = 16384;
         const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
         const relayFileId = entry.fileId + '-' + pid;
-        const metaMsg = JSON.stringify({type: 'file-meta', fileId: relayFileId, name: entry.name, size: entry.size, chunks: totalChunks});
+        // Compute SHA-256 checksum for integrity verification
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const checksum = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const metaMsg = JSON.stringify({type: 'file-meta', fileId: relayFileId, name: entry.name, size: entry.size, chunks: totalChunks, sha256: checksum});
         sendToPeers(metaMsg, new Set([pid]));
 
         const peerState = APP.state.peers.get(pid);
@@ -3565,7 +3568,8 @@ async function sendNextFile() {
 function handleFileMeta(msg, fromPeerId) {
     console.log('[FT] File meta:', msg.name, msg.size, msg.chunks, 'chunks', 'from', fromPeerId);
     APP.state.fileReceives.set(msg.fileId, {
-        name: msg.name, size: msg.size, received: 0, blobs: [], status: 'receiving'
+        name: msg.name, size: msg.size, received: 0, blobs: [], status: 'receiving',
+        sha256: msg.sha256 || null
     });
     APP.state.peerCurrentFile.set(fromPeerId, msg.fileId);
 }
@@ -3586,6 +3590,25 @@ function handleFileDone(msg, fromPeerId) {
 
     const blob = new Blob(entry.blobs, {type: 'application/octet-stream'});
     const url = URL.createObjectURL(blob);
+
+    // Verify SHA-256 checksum if sender provided one
+    if (entry.sha256) {
+        const reader = new FileReader();
+        reader.onload = async function() {
+            const buf = reader.result;
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buf);
+            const receivedHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            if (receivedHash === entry.sha256) {
+                APP.showStatusMsg(`✅ ${entry.name} — 完整性驗證通過 (SHA-256)`);
+            } else {
+                APP.showStatusMsg(`⚠️ ${entry.name} — 完整性驗證失敗，檔案可能已損壞`);
+            }
+        };
+        reader.readAsArrayBuffer(blob);
+    } else {
+        APP.showStatusMsg(`已接收: ${entry.name}`);
+    }
+
     const a = document.createElement('a');
     a.href = url;
     a.download = entry.name;
@@ -3593,7 +3616,6 @@ function handleFileDone(msg, fromPeerId) {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    APP.showStatusMsg(`已接收: ${entry.name}`);
 
     APP.state.fileReceives.delete(msg.fileId);
     // Clear peerCurrentFile if this was the current file from this peer
