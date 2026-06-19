@@ -1141,10 +1141,16 @@ footer input[type="text"] {
                 </div>
                 <!-- Logs -->
                 <div class="admin-pane" id="adminPaneLogs" style="display:none;">
+                    <div class="cl-tab-bar" style="margin-bottom:8px;">
+                        <button class="cl-tab-btn active" data-srctab="server">🖥️ 伺服器</button>
+                        <button class="cl-tab-btn" data-srctab="client">💻 本地端</button>
+                    </div>
                     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
                         <button class="btn btn-secondary" id="btnRefreshLogs" style="font-size:12px;padding:4px 10px;">🔄 刷新</button>
                         <button class="btn btn-secondary" id="btnDownloadLog" style="font-size:12px;padding:4px 10px;">⬇️ 下載日誌</button>
                         <span style="font-size:12px;color:#64748b;">最近 50 行</span>
+                        <span style="flex:1;"></span>
+                        <button class="btn btn-secondary" id="btnDownloadClientLog" style="font-size:12px;padding:4px 10px;">💻 下載本地日誌</button>
                     </div>
                     <div class="log-viewer" id="logViewer" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:12px;color:#94a3b8;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6;"></div>
                 </div>
@@ -1455,6 +1461,59 @@ const APP = {
         }
     }
 };
+
+// ========== Client Logging ==========
+let _clientLogs = [];
+const CLIENT_LOG_MAX = 5000;  // max entries in memory
+const CLIENT_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;  // 24 hours
+
+function _clientLog(level, args) {
+    const now = Date.now();
+    const msg = Array.from(args).map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    _clientLogs.push({ts: now, level, msg});
+    // Trim old logs
+    const cutoff = now - CLIENT_LOG_RETENTION_MS;
+    while (_clientLogs.length > 0 && _clientLogs[0].ts < cutoff) {
+        _clientLogs.shift();
+    }
+    if (_clientLogs.length > CLIENT_LOG_MAX) {
+        _clientLogs = _clientLogs.slice(-CLIENT_LOG_MAX);
+    }
+}
+
+// Intercept console.log/error/warn
+(function() {
+    const origLog = console.log.bind(console);
+    const origError = console.error.bind(console);
+    const origWarn = console.warn.bind(console);
+    console.log = function() { _clientLog('log', arguments); origLog.apply(console, arguments); };
+    console.error = function() { _clientLog('error', arguments); origError.apply(console, arguments); };
+    console.warn = function() { _clientLog('warn', arguments); origWarn.apply(console, arguments); };
+})();
+
+function _getClientLogs(count=200) {
+    return _clientLogs.slice(-count).map(e => {
+        const ts = new Date(e.ts).toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        const icon = e.level === 'error' ? '❌' : e.level === 'warn' ? '⚠️' : '📋';
+        return icon + ' [' + ts + '] ' + e.msg;
+    });
+}
+
+function _downloadClientLogs() {
+    const text = _clientLogs.map(e => {
+        const ts = new Date(e.ts).toISOString();
+        return '[' + ts + '] [' + e.level.toUpperCase() + '] ' + e.msg;
+    }).join('\n');
+    const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clipper-client-log-' + new Date().toISOString().slice(0,10) + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
 
 // ========== LocalStorage Persistence ==========
 function saveToStorage(key, data) {
@@ -4245,10 +4304,12 @@ function handleAdminMessage(data) {
             document.getElementById('adminLoginError').style.display = 'block';
         }
     } else if (data.type === 'admin-logs-result') {
-        const viewer = document.getElementById('logViewer');
-        if (viewer && data.logs) {
-            viewer.innerHTML = data.logs.map(l => escapeHtml(l)).join('<br>');
-            viewer.scrollTop = viewer.scrollHeight;
+        if (APP.state._logSource !== 'client') {
+            const viewer = document.getElementById('logViewer');
+            if (viewer && data.logs) {
+                viewer.innerHTML = data.logs.map(l => escapeHtml(l)).join('<br>');
+                viewer.scrollTop = viewer.scrollHeight;
+            }
         }
     } else if (data.type === 'admin-log-download-result') {
         // Download full log file as text
@@ -4353,8 +4414,33 @@ document.getElementById('adminPw')?.addEventListener('keydown', function(e) { if
 document.getElementById('btnRefreshLogs')?.addEventListener('click', () => {
     if (_adminPassword) sendWsMessage({type: 'admin-logs', token: _adminToken, count: 50});
 });
+// Log source tab switching
+document.querySelectorAll('[data-srctab]').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('[data-srctab]').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        APP.state._logSource = this.dataset.srctab;
+        _refreshLogViewer();
+    });
+});
+if (!APP.state._logSource) APP.state._logSource = 'server';
+
+function _refreshLogViewer() {
+    const viewer = document.getElementById('logViewer');
+    if (!viewer) return;
+    if (APP.state._logSource === 'client') {
+        const logs = _getClientLogs(50);
+        viewer.innerHTML = logs.map(l => escapeHtml(l)).join('<br>');
+        viewer.scrollTop = viewer.scrollHeight;
+    }
+}
+
 document.getElementById('btnDownloadLog')?.addEventListener('click', () => {
     if (_adminPassword) sendWsMessage({type: 'admin-log-download', token: _adminToken});
+});
+document.getElementById('btnDownloadClientLog')?.addEventListener('click', () => {
+    _downloadClientLogs();
+    APP.showStatusMsg('✅ 本地端日誌已下載');
 });
 
 // Save config
