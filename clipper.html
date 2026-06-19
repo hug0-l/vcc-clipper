@@ -2328,7 +2328,7 @@ function handleWsMessage(data) {
             // Start heartbeat
             if (APP.state._heartbeatInterval) clearInterval(APP.state._heartbeatInterval);
             APP.state._heartbeatInterval = setInterval(() => {
-                if (APP.state.connected && APP.state.room) {
+                if (APP.state.ws && APP.state.ws.readyState === WebSocket.OPEN && APP.state.room) {
                     sendWsMessage({type: 'ping'});
                 }
             }, 10000);
