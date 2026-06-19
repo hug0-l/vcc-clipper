@@ -973,9 +973,9 @@ footer input[type="text"] {
                 <li>需要 Python 3.8+ 執行信令伺服器（可 Docker 化或打包為二進位檔）</li>
                 <li>跨子網需要網路設備支援 UDP 路由 — 已內建 Google STUN 伺服器（設定頁可修改），
                     若 STUN 仍無法穿透則自動降為 WS Relay 中繼</li>
-                <li>檔案傳輸支援多對象並行傳送（各對象獨立不阻塞）</li>
+                <li>檔案傳輸支援多對象並行傳送（各對象獨立不阻塞），P2P 失敗時自動降為 WS Relay</li>
                 <li>房間上限 50 人（可調整 <code>MAX_PEERS_PER_ROOM</code>），建議 20 人以內以保持 P2P 效能</li>
-                <li>TURN 伺服器未內建，可在設定頁自訂 STUN 位址或搭配外部 TURN</li>
+                <li>標準 TURN 協議未內建（因為 WS Relay 已提供同等中繼功能），設定頁可自訂 STUN/TURN 位址</li>
             </ul>
             <p style="margin-top:24px;border-top:1px solid #1e293b;padding-top:16px;display:flex;gap:8px;">
                 <button class="btn btn-secondary" id="btnDump" style="font-size:15px;">🔍 Debug Dump</button>
