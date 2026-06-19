@@ -676,6 +676,9 @@ footer input[type="text"] {
                 <li>跨子網需要網路設備支援 UDP 路由</li>
                 <li>聊天室訊息傳送需所有用戶保持連線</li>
             </ul>
+            <p style="margin-top:24px;border-top:1px solid #1e293b;padding-top:16px;">
+                <button class="btn btn-secondary" id="btnDump" style="font-size:12px;">🔍 Debug Dump</button>
+            </p>
         </div>
     </section>
 </main>
@@ -949,17 +952,22 @@ function showNoticeForm(post) {
 }
 
 function createNoticePost(title, content) {
-    const post = {
+    if (!APP.state.connected || !APP.state.room) {
+        APP.showStatusMsg('❌ 請先建立連線');
+        return;
+    }
+    const newPost = {
         id: crypto.randomUUID(),
-        title,
-        content,
+        title: title.trim(),
+        content: content.trim(),
         author: APP.state.displayName,
         pinned: false,
         timestamp: Date.now(),
+        editedAt: null
     };
-    APP.state.noticePosts.push(post);
+    APP.state.noticePosts.push(newPost);
     saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-    broadcastToPeers(JSON.stringify({type: 'notice-publish', post}));
+    sendWsMessage({type: 'notice-create', room: APP.state.room, post: newPost});
     renderNoticeBoard();
     APP.showStatusMsg('✅ 公告已發布');
 }
@@ -967,21 +975,20 @@ function createNoticePost(title, content) {
 function editNoticePost(id, title, content) {
     const post = APP.state.noticePosts.find(p => p.id === id);
     if (!post) return;
-    post.title = title;
-    post.content = content;
+    post.title = title.trim();
+    post.content = content.trim();
     post.editedAt = Date.now();
     saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-    broadcastToPeers(JSON.stringify({type: 'notice-edit', id, title, content, editedAt: post.editedAt}));
+    sendWsMessage({type: 'notice-edit', room: APP.state.room, id, title: post.title, content: post.content, editedAt: post.editedAt});
     renderNoticeBoard();
     APP.showStatusMsg('✅ 公告已更新');
 }
 
 async function deleteNoticePost(id) {
-    const confirmed = await showConfirmDialog('確定要刪除此公告嗎？');
-    if (!confirmed) return;
+    if (!await showConfirmDialog('確定刪除此公告？')) return;
     APP.state.noticePosts = APP.state.noticePosts.filter(p => p.id !== id);
     saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-    broadcastToPeers(JSON.stringify({type: 'notice-delete', id}));
+    sendWsMessage({type: 'notice-delete', room: APP.state.room, id});
     renderNoticeBoard();
     APP.showStatusMsg('✅ 公告已刪除');
 }
@@ -991,7 +998,7 @@ function togglePinNoticePost(id) {
     if (!post) return;
     post.pinned = !post.pinned;
     saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-    broadcastToPeers(JSON.stringify({type: 'notice-pin', id, pinned: post.pinned}));
+    sendWsMessage({type: 'notice-pin', room: APP.state.room, id, pinned: post.pinned});
     renderNoticeBoard();
 }
 // ========== Display Name ==========
@@ -1090,6 +1097,82 @@ function handleWsMessage(data) {
             APP.state.myPeerId = data.peerId;
             APP.setRoomCode(data.room);
             APP.showStatusMsg(`已加入配對 (我的 ID: ${data.peerId})`);
+            // NEW: fetch server-persisted state
+            if (APP.state.room) {
+                sendWsMessage({type: 'state-get', room: APP.state.room});
+            }
+            break;
+
+        case 'room-state':
+            // data.noticePosts, data.checklistItems
+            APP.state.noticePosts = data.noticePosts || [];
+            APP.state.checklistItems = data.checklistItems || [];
+            saveToStorage('vcc_notice_posts', APP.state.noticePosts);
+            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
+            renderNoticeBoard();
+            renderChecklist();
+            break;
+
+        case 'notice-create':
+            mergeNoticePosts([data.post]);
+            saveToStorage('vcc_notice_posts', APP.state.noticePosts);
+            renderNoticeBoard();
+            break;
+
+        case 'notice-edit': {
+            const editPost = APP.state.noticePosts.find(p => p.id === data.id);
+            if (editPost) {
+                editPost.title = data.title;
+                editPost.content = data.content;
+                editPost.editedAt = data.editedAt;
+                saveToStorage('vcc_notice_posts', APP.state.noticePosts);
+                renderNoticeBoard();
+            }
+            break;
+        }
+
+        case 'notice-delete':
+            APP.state.noticePosts = APP.state.noticePosts.filter(p => p.id !== data.id);
+            saveToStorage('vcc_notice_posts', APP.state.noticePosts);
+            renderNoticeBoard();
+            break;
+
+        case 'notice-pin': {
+            const pinPost = APP.state.noticePosts.find(p => p.id === data.id);
+            if (pinPost) {
+                pinPost.pinned = data.pinned;
+                saveToStorage('vcc_notice_posts', APP.state.noticePosts);
+                renderNoticeBoard();
+            }
+            break;
+        }
+
+        case 'checklist-add':
+            mergeIncomingChecklistItem(data.item);
+            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
+            renderChecklist();
+            break;
+
+        case 'checklist-toggle': {
+            const chkItem = APP.state.checklistItems.find(i => i.id === data.id);
+            if (chkItem) {
+                chkItem.checked = data.checked;
+                chkItem.checkedAt = data.checkedAt;
+                saveToStorage('vcc_checklist_items', APP.state.checklistItems);
+                renderChecklist();
+            }
+            break;
+        }
+
+        case 'checklist-delete':
+            APP.state.checklistItems = APP.state.checklistItems.filter(i => i.id !== data.id);
+            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
+            renderChecklist();
+            break;
+
+        case 'dump-result':
+            console.log('=== Server Dump ===', JSON.stringify(data, null, 2));
+            APP.showStatusMsg('🔍 伺服器資料已輸出到開發者主控台');
             break;
 
         case 'room_peers':
@@ -1385,59 +1468,6 @@ function setupDataChannel(dc, peerId) {
                             fn(msg);
                         }
                         break;
-                    case 'notice-publish': {
-                        mergeNoticePosts([msg.post]);
-                        saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-                        renderNoticeBoard();
-                        break;
-                    }
-                    case 'notice-edit': {
-                        const editPost = APP.state.noticePosts.find(p => p.id === msg.id);
-                        if (editPost) {
-                            editPost.title = msg.title;
-                            editPost.content = msg.content;
-                            editPost.editedAt = msg.editedAt;
-                            saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-                            renderNoticeBoard();
-                        }
-                        break;
-                    }
-                    case 'notice-delete': {
-                        APP.state.noticePosts = APP.state.noticePosts.filter(p => p.id !== msg.id);
-                        saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-                        renderNoticeBoard();
-                        break;
-                    }
-                    case 'notice-pin': {
-                        const pinPost = APP.state.noticePosts.find(p => p.id === msg.id);
-                        if (pinPost) {
-                            pinPost.pinned = msg.pinned;
-                            saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-                            renderNoticeBoard();
-                        }
-                        break;
-                    }
-                    case 'checklist-add':
-                        mergeIncomingChecklistItem(msg.item);
-                        saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-                        renderChecklist();
-                        break;
-                    case 'checklist-toggle':
-                        {
-                            const item = APP.state.checklistItems.find(i => i.id === msg.id);
-                            if (item) {
-                                item.checked = msg.checked;
-                                item.checkedAt = msg.checkedAt;
-                            }
-                            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-                            renderChecklist();
-                        }
-                        break;
-                    case 'checklist-delete':
-                        APP.state.checklistItems = APP.state.checklistItems.filter(i => i.id !== msg.id);
-                        saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-                        renderChecklist();
-                        break;
                     default:
                         console.log(`[DC:${peerId}] Unknown message type:`, msg.type);
                 }
@@ -1646,12 +1676,11 @@ function renderChecklist() {
 }
 
 function addChecklistItem(text) {
-    if (!text.trim()) return;
-    if (!APP.state.connected) {
+    if (!APP.state.connected || !APP.state.room) {
         APP.showStatusMsg('❌ 請先建立連線');
         return;
     }
-    const item = {
+    const newItem = {
         id: crypto.randomUUID(),
         text: text.trim(),
         checked: false,
@@ -1659,9 +1688,9 @@ function addChecklistItem(text) {
         timestamp: Date.now(),
         checkedAt: null
     };
-    APP.state.checklistItems.push(item);
+    APP.state.checklistItems.push(newItem);
     saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    broadcastToPeers(JSON.stringify({type: 'checklist-add', item}));
+    sendWsMessage({type: 'checklist-add', room: APP.state.room, item: newItem});
     renderChecklist();
 }
 
@@ -1671,16 +1700,15 @@ function toggleChecklistItem(id) {
     item.checked = !item.checked;
     item.checkedAt = item.checked ? Date.now() : null;
     saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    broadcastToPeers(JSON.stringify({type: 'checklist-toggle', id, checked: item.checked, checkedAt: item.checkedAt}));
+    sendWsMessage({type: 'checklist-toggle', room: APP.state.room, id, checked: item.checked, checkedAt: item.checkedAt});
     renderChecklist();
 }
 
 async function deleteChecklistItem(id) {
-    const confirmed = await showConfirmDialog('確定要刪除此待辦事項嗎？');
-    if (!confirmed) return;
+    if (!await showConfirmDialog('確定刪除此項目？')) return;
     APP.state.checklistItems = APP.state.checklistItems.filter(i => i.id !== id);
     saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-    broadcastToPeers(JSON.stringify({type: 'checklist-delete', id}));
+    sendWsMessage({type: 'checklist-delete', room: APP.state.room, id});
     renderChecklist();
 }
 
@@ -1714,16 +1742,6 @@ function mergeChecklistItems(incomingItems) {
     addBtn.addEventListener('click', () => {
         addChecklistItem(input.value);
         input.value = '';
-    });
-    // Register sync provider
-    APP.registerSyncProvider(() => ({checklistItems: APP.state.checklistItems}));
-    // Register sync consumer
-    APP.registerSyncConsumer((data) => {
-        if (data.checklistItems) {
-            mergeChecklistItems(data.checklistItems);
-            saveToStorage('vcc_checklist_items', APP.state.checklistItems);
-            renderChecklist();
-        }
     });
 })();
 
@@ -2069,9 +2087,17 @@ function sendChatMessage() {
         return;
     }
     input.value = '';
-    const msg = {type: 'chat', text: text, from: APP.state.displayName, timestamp: Date.now()};
+    const timestamp = Date.now();
+    const msg = {type: 'chat', text, from: APP.state.displayName, timestamp};
+
+    // 1. Send via DC (P2P real-time) - existing behavior
     broadcastToPeers(JSON.stringify(msg));
-    appendChatMessage(APP.state.displayName, text, msg.timestamp);
+    appendChatMessage(APP.state.displayName, text, timestamp);
+
+    // 2. Backup to server (fire-and-forget, no need to wait)
+    if (APP.state.room) {
+        sendWsMessage({type: 'chat-backup', room: APP.state.room, text, from: APP.state.displayName, timestamp});
+    }
 }
 
 function appendChatMessage(from, text, timestamp) {
@@ -2147,17 +2173,14 @@ document.getElementById('btnClearChat').addEventListener('click', async () => {
 APP.state.noticePosts = loadFromStorage('vcc_notice_posts', []);
 renderNoticeBoard();
 
-APP.registerSyncProvider(() => ({noticePosts: APP.state.noticePosts}));
-APP.registerSyncConsumer((data) => {
-    if (data.noticePosts) {
-        mergeNoticePosts(data.noticePosts);
-        saveToStorage('vcc_notice_posts', APP.state.noticePosts);
-        renderNoticeBoard();
-    }
-});
-
 document.getElementById('btnNewPost').addEventListener('click', () => {
     showNoticeForm();
+});
+
+// ========== Debug Dump ==========
+document.getElementById('btnDump')?.addEventListener('click', () => {
+    sendWsMessage({type: 'dump'});
+    APP.showStatusMsg('正在請求伺服器資料...');
 });
 
 </script>
