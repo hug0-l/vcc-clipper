@@ -3781,7 +3781,7 @@ function updatePeerTargetUI() {
     const container = document.getElementById('fileTargetSelect');
     const list = document.getElementById('peerTargetList');
     const peerCount = APP.state.peers.size;
-    if (peerCount <= 1) {
+    if (peerCount < 1) {
         container.style.display = 'none';
         return;
     }
