@@ -1447,7 +1447,7 @@ const APP = {
                 connectWebSocket(url).then(() => {
                     // Reconnect: re-join the room or create a new one
                     if (APP.state.room) {
-                        sendWsMessage({type: 'join', room: APP.state.room});
+                        sendWsMessage({type: 'join', room: APP.state.room, displayName: APP.state.displayName});
                     } else {
                         sendWsMessage({type: 'generate'});
                     }
@@ -1963,7 +1963,7 @@ function autoReconnect() {
             document.getElementById('errorToast').className = '';
             const roomToJoin = APP.state._lastRoom || APP.state.room;
             if (roomToJoin) {
-                sendWsMessage({type: 'join', room: roomToJoin});
+                sendWsMessage({type: 'join', room: roomToJoin, displayName: APP.state.displayName});
             } else {
                 sendWsMessage({type: 'generate'});
             }
@@ -2035,7 +2035,7 @@ function handleWsMessage(data) {
             APP.state.room = data.room;
             APP.setRoomCode(data.room);
             APP.showStatusMsg(`配對代碼: ${data.room} — 等待其他人加入...`);
-            sendWsMessage({type: 'join', room: data.room});
+            sendWsMessage({type: 'join', room: data.room, displayName: APP.state.displayName});
             break;
 
         case 'joined':
@@ -2868,6 +2868,10 @@ document.getElementById('displayNameSpan').addEventListener('click', function() 
             const span = document.getElementById('displayNameSpan');
             span.textContent = APP.state.displayName;
             span.style.display = '';
+            // Notify server so peer-list reflects the change
+            if (APP.state.connected && APP.state.room) {
+                sendWsMessage({type: 'register-name', room: APP.state.room, displayName: APP.state.displayName});
+            }
         } else {
             document.getElementById('displayNameSpan').style.display = '';
         }
@@ -4261,10 +4265,10 @@ function updateSettingsView() {
             userList.innerHTML = '<div style="color:#475569;">僅你一人</div>';
         } else {
             userList.innerHTML = peers.map(([pid, name]) => {
-                const isSelf = name === self || pid === APP.state.myPeerId;
+                const isSelf = pid === APP.state.myPeerId;
                 return '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">'
                     + '<span style="color:#22c55e;">🟢</span>'
-                    + '<span>' + escapeHtml(name || pid) + '</span>'
+                    + '<span>' + escapeHtml(name || pid) + '（' + escapeHtml(pid) + '）</span>'
                     + (isSelf ? ' <span style="color:#64748b;font-size:12px;">(你)</span>' : '')
                     + '</div>';
             }).join('');
