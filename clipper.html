@@ -4096,7 +4096,7 @@ function sendToPeerDC(pid, jsonStr) {
     return false;
 }
 function relayToPeer(pid, jsonStr) {
-    if (!APP.state.connected || !APP.state.room) return false;
+    if (!APP.state.ws || APP.state.ws.readyState !== WebSocket.OPEN || !APP.state.room) return false;
     let payload;
     try { payload = JSON.parse(jsonStr); } catch (_) { payload = { raw: jsonStr }; }
     sendWsMessage({type: 'relay-data', room: APP.state.room, to: pid, data: payload});
@@ -4398,14 +4398,14 @@ function sendChatMessage() {
     const input = document.getElementById('chatInput');
     const text = input.value.trim();
     if (!text) { APP.showStatusMsg('💡 請輸入訊息內容'); return; }
-    if (!APP.state.connected) {
+    if (!APP.state.ws || APP.state.ws.readyState !== WebSocket.OPEN) {
         APP.showStatusMsg('❌ 請先建立連線');
         return;
     }
     input.value = '';
     const timestamp = Date.now();
     const msgId = crypto.randomUUID().slice(0, 8);
-    const peerCount = [...APP.state.peers.values()].filter(p => p.dc && p.dc.readyState === 'open').length;
+    const peerCount = APP.state.peers.size || 1;
     const msg = {type: 'chat', msgId, text, from: APP.state.displayName, timestamp};
 
     // 1. Track delivery status
