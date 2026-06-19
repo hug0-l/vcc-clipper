@@ -456,6 +456,38 @@ footer input[type="text"] {
     to { transform: translateY(0); }
 }
 
+/* --- Popup Notification --- */
+#popupContainer {
+    position: fixed;
+    bottom: 70px;
+    right: 20px;
+    z-index: 9998;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: 340px;
+}
+.popup-notification {
+    pointer-events: auto;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    animation: popupIn 0.3s ease;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.popup-notification:hover { opacity: 0.9; }
+.popup-notification.dismissed { opacity: 0; transform: translateX(30px); transition: all 0.25s ease; }
+.popup-notification .popup-title { font-size:12px; color:#94a3b8; margin-bottom:2px; }
+.popup-notification .popup-body { font-size:14px; color:#e2e8f0; line-height:1.4; }
+@keyframes popupIn {
+    from { opacity:0; transform:translateX(20px); }
+    to { opacity:1; transform:translateX(0); }
+}
+
 /* --- Notice Board Styles --- */
 .notice-container {
     max-width: 700px;
@@ -736,6 +768,7 @@ footer input[type="text"] {
 
 <main>
     <div id="errorToast" class=""></div>
+    <div id="popupContainer"></div>
     <section class="tab-pane active" data-tab="clipboard">
         <div class="chat-container" id="chatContainer">
             <div class="chat-messages" id="chatMessages"></div>
@@ -1194,6 +1227,32 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// ========== Popup Notification ==========
+function showPopup(icon, title, body) {
+    const container = document.getElementById('popupContainer');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'popup-notification';
+    el.innerHTML = '<div class="popup-title">' + icon + ' ' + escapeHtml(title) + '</div>'
+        + '<div class="popup-body">' + escapeHtml(body) + '</div>';
+    el.addEventListener('click', () => {
+        el.classList.add('dismissed');
+        setTimeout(() => el.remove(), 300);
+    });
+    container.appendChild(el);
+    // Auto-dismiss after 6 seconds
+    setTimeout(() => {
+        if (el.parentNode) {
+            el.classList.add('dismissed');
+            setTimeout(() => el.remove(), 300);
+        }
+    }, 6000);
+    // Limit to 5 visible popups
+    while (container.children.length > 5) {
+        container.firstChild.remove();
+    }
+}
+
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1311,6 +1370,7 @@ function handleWsMessage(data) {
             mergeNoticePosts([data.post]);
             saveToStorage('vcc_notice_posts', APP.state.noticePosts);
             renderNoticeBoard();
+            showPopup('📋', '新公告', (data.post && data.post.author ? data.post.author + '：' : '') + (data.post && data.post.title ? data.post.title : ''));
             break;
 
         case 'notice-edit': {
@@ -1350,6 +1410,7 @@ function handleWsMessage(data) {
                 APP.state.checklists.push(data.board);
                 saveToStorage('vcc_checklists', APP.state.checklists);
                 renderChecklistBoards();
+                showPopup('✅', '新檢查清單', (data.board && data.board.createdBy ? data.board.createdBy + '：' : '') + (data.board && data.board.title ? data.board.title : ''));
             }
             break;
 
@@ -1395,6 +1456,7 @@ function handleWsMessage(data) {
                     addBoard.items.push(data.item);
                     saveToStorage('vcc_checklists', APP.state.checklists);
                     renderChecklistBoards();
+                    showPopup('✅', '新待辦項目', (data.item && data.item.addedBy ? data.item.addedBy + ' 在「' + addBoard.title + '」：' : '') + (data.item && data.item.text ? data.item.text : ''));
                 }
             }
             break;
