@@ -951,7 +951,8 @@ footer input[type="text"] {
             <div class="cms-header">
                 <h2>📋 公告管理</h2>
                 <div class="cms-toolbar">
-                    <input type="text" class="cms-search" id="cmsSearch" placeholder="🔍 搜尋公告...">
+                    <input type="text" class="cms-search" id="cmsSearch" placeholder="🔍 搜尋公告..." style="min-width:120px;">
+                    <button class="btn btn-secondary" id="btnCmsSearch" style="font-size:13px;padding:4px 10px;">🔍 搜尋</button>
                     <select class="cms-filter" id="cmsFilterCat">
                         <option value="">全部分類</option>
                         <option value="重要">重要</option>
@@ -3520,8 +3521,10 @@ document.getElementById('btnNewPostSidebar')?.addEventListener('click', () => {
     showNoticeForm();
 });
 
-// CMS search/filter live update
+// CMS search/filter
 document.getElementById('cmsSearch')?.addEventListener('input', renderCmsTable);
+document.getElementById('cmsSearch')?.addEventListener('keydown', function(e) { if (e.key === 'Enter') renderCmsTable(); });
+document.getElementById('btnCmsSearch')?.addEventListener('click', renderCmsTable);
 document.getElementById('cmsFilterCat')?.addEventListener('change', renderCmsTable);
 
 // ========== Settings Tab Watcher ==========
