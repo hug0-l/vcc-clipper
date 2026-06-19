@@ -4202,7 +4202,7 @@ function updatePeerTargetUI() {
         const selected = APP.state.selectedTargetPeerIds.has(pid);
         btn.className = 'peer-target-btn' + (selected ? ' selected' : '');
         const dName = APP.state.peerNames.get(pid) || pid;
-        btn.textContent = `🖥 ${dName} (${pid})`;
+        btn.textContent = `🖥 ${dName}`;
         btn.title = pid;
         btn.dataset.peerId = pid;
         btn.addEventListener('click', () => {
