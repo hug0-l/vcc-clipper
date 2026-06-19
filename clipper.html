@@ -1085,6 +1085,12 @@ footer input[type="text"] {
                 </div>
             </div>
             <div class="settings-section" style="margin-top:20px;">
+                <h3 style="font-size:18px;font-weight:500;margin-bottom:12px;">👥 在線用戶</h3>
+                <div id="onlineUserList" style="padding:8px 12px;background:#1e293b;border-radius:8px;font-size:14px;line-height:1.8;min-height:30px;color:#64748b;">
+                    <div id="onlineUserPlaceholder" style="color:#475569;">載入中...</div>
+                </div>
+            </div>
+            <div class="settings-section" style="margin-top:20px;">
                 <h3 style="font-size:18px;font-weight:500;margin-bottom:12px;">💾 資料</h3>
                 <div style="display:flex;flex-direction:column;gap:8px;">
                     <div style="display:flex;justify-content:space-between;padding:8px 12px;background:#1e293b;border-radius:8px;">
@@ -1853,10 +1859,19 @@ function handleWsMessage(data) {
             APP.state.checklists = loadFromStorage(APP.roomKey('vcc_checklists'), []);
             renderNoticeBoard();
             renderChecklistBoards();
-            // Fetch server-persisted state (will merge with local)
+            // Register display name with server (handles conflicts)
+            sendWsMessage({type: 'register-name', room: APP.state.room, displayName: APP.state.displayName});
+            // Fetch server-persisted state
             if (APP.state.room) {
                 sendWsMessage({type: 'state-get', room: APP.state.room});
             }
+            // Start heartbeat
+            if (APP.state._heartbeatInterval) clearInterval(APP.state._heartbeatInterval);
+            APP.state._heartbeatInterval = setInterval(() => {
+                if (APP.state.connected && APP.state.room) {
+                    sendWsMessage({type: 'ping'});
+                }
+            }, 10000);
             break;
 
         case 'room-state':
@@ -1887,6 +1902,18 @@ function handleWsMessage(data) {
             renderNoticeBoard();
             renderChecklistBoards();
             APP.updateSyncStatus();
+            break;
+
+        case 'name-resolved':
+            // Server tells us our final display name (may have been changed if duplicate)
+            if (data.displayName && data.displayName !== APP.state.displayName) {
+                APP.state.displayName = data.displayName;
+                document.getElementById('displayNameSpan').textContent = APP.state.displayName;
+                saveToStorage('vcc_display_name', APP.state.displayName);
+                if (data.wasConflict) {
+                    APP.showStatusMsg(`ℹ️ 名稱「${data.displayName.replace(/\d+$/, '')}」已被使用，已自動改為「${data.displayName}」`);
+                }
+            }
             break;
 
         case 'notice-create':
@@ -2151,6 +2178,29 @@ function handleWsMessage(data) {
             removePeer(data.peerId);
             break;
 
+        case 'peer-list':
+            // Server-sent authoritative list of online peers with names
+            if (data.peers) {
+                // Sync peerNames from server
+                APP.state.peerNames.clear();
+                const peerIdsToRemove = [];
+                for (const p of data.peers) {
+                    APP.state.peerNames.set(p.peerId, p.displayName || p.peerId);
+                }
+                // Remove peers no longer in the list
+                for (const pid of APP.state.peers.keys()) {
+                    if (!data.peers.some(p => p.peerId === pid)) {
+                        peerIdsToRemove.push(pid);
+                    }
+                }
+                for (const pid of peerIdsToRemove) {
+                    if (pid !== APP.state.myPeerId) removePeer(pid);
+                }
+                APP.updatePeerCount();
+                updateTransportUI();
+            }
+            break;
+
         case 'room_full':
             APP.showStatusMsg('❌ 房間已滿');
             cleanupConnection();
@@ -2334,13 +2384,8 @@ function setupDataChannel(dc, peerId) {
         } else {
             APP.state.peers.set(peerId, { pc: null, dc: dc, connected: true });
         }
-        // Send display name to the new peer
-        try {
-            dc.send(JSON.stringify({type: 'peer-info', displayName: APP.state.displayName}));
-        } catch (e) {
-            console.error('[DC] send peer-info error', e);
-        }
         // Send sync request to get state from the connected peer
+        // (peer-info replaced by server peer-list)
         try {
             dc.send(JSON.stringify({type: 'sync-request'}));
         } catch (e) {
@@ -2373,9 +2418,7 @@ function setupDataChannel(dc, peerId) {
                 console.log(`[DC:${peerId}] Message:`, msg.type, msg);
                 switch (msg.type) {
                     case 'peer-info':
-                        APP.state.peerNames.set(peerId, msg.displayName);
-                        appendSystemMessage(`${msg.displayName} 已加入連線`);
-                        APP.updatePeerCount();
+                        // Handled via server peer-list now
                         break;
                     case 'chat':
                         appendChatMessage(msg.from, msg.text, msg.timestamp);
@@ -2521,6 +2564,7 @@ function joinRoom() {
 
 function disconnect() {
     APP.state.intentionalDisconnect = true;
+    if (APP.state._heartbeatInterval) { clearInterval(APP.state._heartbeatInterval); APP.state._heartbeatInterval = null; }
     APP.showStatusMsg('正在中斷連線...');
     cleanupConnection();
     APP.showStatusMsg('已中斷連線');
@@ -3907,6 +3951,24 @@ function updateSettingsView() {
     if (stunInput && !stunInput.dataset.loaded) {
         stunInput.value = loadFromStorage('vcc_stun_server', 'stun:stun.l.google.com:19302');
         stunInput.dataset.loaded = '1';
+    }
+    // Render online user list
+    const userList = document.getElementById('onlineUserList');
+    if (userList) {
+        const peers = [...APP.state.peerNames.entries()];
+        const self = APP.state.displayName;
+        if (peers.length === 0) {
+            userList.innerHTML = '<div style="color:#475569;">僅你一人</div>';
+        } else {
+            userList.innerHTML = peers.map(([pid, name]) => {
+                const isSelf = name === self || pid === APP.state.myPeerId;
+                return '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;">'
+                    + '<span style="color:#22c55e;">🟢</span>'
+                    + '<span>' + escapeHtml(name || pid) + '</span>'
+                    + (isSelf ? ' <span style="color:#64748b;font-size:12px;">(你)</span>' : '')
+                    + '</div>';
+            }).join('');
+        }
     }
 }
 // Update settings view every 2 seconds

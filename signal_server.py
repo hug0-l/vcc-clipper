@@ -181,7 +181,7 @@ async def handler(websocket):
                 if rid not in rooms:
                     rooms[rid] = {}
 
-                rooms[rid][my_peer_id] = {"ws": websocket, "joinedAt": now_iso}
+                rooms[rid][my_peer_id] = {"ws": websocket, "joinedAt": now_iso, "lastHeartbeat": time.time(), "displayName": data.get("displayName", my_peer_id)}
                 room_id = rid
 
                 # Send joined confirmation
@@ -213,6 +213,8 @@ async def handler(websocket):
                         exclude=websocket,
                     )
 
+                # Broadcast updated peer list to all (including joiner)
+                await _broadcast_peer_list(room_id)
                 _log('JOIN', f'{my_peer_id} joined room {room_id} ({len(rooms[room_id])} peers)')
 
             elif msg_type in ("offer", "answer", "ice-candidate"):
@@ -602,6 +604,33 @@ async def handler(websocket):
                     "room": rid,
                 }))
 
+            elif msg_type == "ping":
+                if my_peer_id and room_id and room_id in rooms and my_peer_id in rooms[room_id]:
+                    rooms[room_id][my_peer_id]["lastHeartbeat"] = time.time()
+                    try:
+                        await websocket.send(json.dumps({"type": "pong"}))
+                    except:
+                        pass
+
+            elif msg_type == "register-name":
+                rid = data.get("room")
+                name = data.get("displayName", "").strip()
+                if not rid or rid not in rooms or not name or not my_peer_id:
+                    await websocket.send(json.dumps({"type": "error", "message": "invalid register-name"}))
+                    continue
+                # Check for duplicate names
+                final_name = name
+                counter = 1
+                while any(info.get("displayName", "") == final_name for pid, info in rooms[rid].items() if pid != my_peer_id):
+                    counter += 1
+                    final_name = f"{name}{counter}"
+                rooms[rid][my_peer_id]["displayName"] = final_name
+                # Notify the client of their resolved name
+                await websocket.send(json.dumps({"type": "name-resolved", "displayName": final_name, "wasConflict": final_name != name}))
+                _log('NAME', f'{my_peer_id} registered as "{final_name}"{" (was conflict: " + name + ")" if final_name != name else ""} in {rid}')
+                # Broadcast updated peer list
+                await _broadcast_peer_list(rid)
+
             elif msg_type == "relay-data":
                 rid = data.get("room")
                 target = data.get("to")
@@ -692,6 +721,8 @@ async def handler(websocket):
                 _debug(f"Room {room_id} now empty, deleting")
                 del rooms[room_id]
 
+        if room_id and room_id in rooms:
+            asyncio.create_task(_broadcast_peer_list(room_id))
         _log('DISCONNECT', f'{my_peer_id} disconnected (room: {room_id})')
 
 
@@ -712,10 +743,53 @@ def _broadcast(room_peers, message, exclude=None):
         _debug(f"→ TX broadcast type={mtype} to={len(target_ids)} peers")
 
 
+async def _broadcast_peer_list(rid):
+    """Broadcast the current online peer list for a room."""
+    if rid not in rooms:
+        return
+    peer_list = []
+    for pid, info in rooms[rid].items():
+        peer_list.append({
+            "peerId": pid,
+            "displayName": info.get("displayName", pid),
+            "joinedAt": info.get("joinedAt", ""),
+            "alive": True,
+        })
+    _broadcast(rooms[rid], {"type": "peer-list", "peers": peer_list})
+
+
+HEARTBEAT_TIMEOUT = 20  # seconds without heartbeat = stale
+
+async def _heartbeat_check():
+    """Periodic heartbeat check. Remove stale peers and broadcast lists."""
+    while True:
+        await asyncio.sleep(10)
+        now = time.time()
+        for rid in list(rooms.keys()):
+            stale = []
+            for pid, info in list(rooms[rid].items()):
+                if now - info.get("lastHeartbeat", 0) > HEARTBEAT_TIMEOUT:
+                    stale.append(pid)
+            for pid in stale:
+                _log('HEARTBEAT', f'{pid} timed out in room {rid}')
+                try:
+                    await rooms[rid][pid]["ws"].close()
+                except:
+                    pass
+                rooms[rid].pop(pid, None)
+                peer_ids.discard(pid)
+            if stale:
+                if rooms[rid]:
+                    await _broadcast_peer_list(rid)
+                else:
+                    del rooms[rid]
+
+
 async def main():
     _init_db()
     _load_state()
     _migrate_room_data()
+    asyncio.create_task(_heartbeat_check())
     total_notices = sum(len(r.get("noticePosts", [])) for r in room_data.values())
     total_boards = sum(len(r.get("checklists", [])) for r in room_data.values())
     total_chats = sum(len(r.get("chatMessages", [])) for r in room_data.values())
