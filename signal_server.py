@@ -855,6 +855,18 @@ async def handler(websocket):
                 logs = _get_logs(count)
                 await websocket.send(json.dumps({"type": "admin-logs-result", "logs": logs}))
 
+            elif msg_type == "admin-log-download":
+                if not _verify_admin_password(data.get("password", "")):
+                    await websocket.send(json.dumps({"type": "error", "message": "unauthorized"}))
+                    continue
+                today_log = os.path.join(LOG_DIR, f"clipper_{datetime.now().strftime('%Y%m%d')}.log")
+                if os.path.exists(today_log):
+                    with open(today_log, 'r', encoding='utf-8') as f:
+                        log_text = f.read()
+                else:
+                    log_text = "(no logs yet)"
+                await websocket.send(json.dumps({"type": "admin-log-download-result", "logText": log_text, "logName": f"clipper_{datetime.now().strftime('%Y%m%d')}.log"}))
+
             elif msg_type == "admin-change-password":
                 old_pw = data.get("oldPassword", "")
                 new_pw = data.get("newPassword", "")

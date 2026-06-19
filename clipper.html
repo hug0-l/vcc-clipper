@@ -1156,6 +1156,7 @@ footer input[type="text"] {
                 <div class="admin-pane" id="adminPaneLogs" style="display:none;">
                     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
                         <button class="btn btn-secondary" id="btnRefreshLogs" style="font-size:12px;padding:4px 10px;">🔄 刷新</button>
+                        <button class="btn btn-secondary" id="btnDownloadLog" style="font-size:12px;padding:4px 10px;">⬇️ 下載日誌</button>
                         <span style="font-size:12px;color:#64748b;">最近 50 行</span>
                     </div>
                     <div class="log-viewer" id="logViewer" style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:12px;color:#94a3b8;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.6;"></div>
@@ -4212,6 +4213,20 @@ function handleAdminMessage(data) {
             viewer.innerHTML = data.logs.map(l => escapeHtml(l)).join('<br>');
             viewer.scrollTop = viewer.scrollHeight;
         }
+    } else if (data.type === 'admin-log-download-result') {
+        // Download full log file as text
+        if (data.logText) {
+            const blob = new Blob([data.logText], {type: 'text/plain;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = data.logName || 'clipper.log';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            APP.showStatusMsg('✅ 日誌已下載');
+        }
     } else if (data.type === 'admin-config') {
         if (data.config) {
             document.getElementById('adminConfigRetention').value = data.config.chatRetentionDays || 7;
@@ -4264,6 +4279,9 @@ document.getElementById('adminPw')?.addEventListener('keydown', function(e) { if
 // Refresh logs
 document.getElementById('btnRefreshLogs')?.addEventListener('click', () => {
     if (_adminPassword) sendWsMessage({type: 'admin-logs', password: _adminPassword, count: 50});
+});
+document.getElementById('btnDownloadLog')?.addEventListener('click', () => {
+    if (_adminPassword) sendWsMessage({type: 'admin-log-download', password: _adminPassword});
 });
 
 // Save config
