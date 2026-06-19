@@ -2643,28 +2643,15 @@ function handleWsMessage(data) {
             break;
 
         case 'offer':
-            APP.showStatusMsg('收到連線請求');
-            startWebRTCPeer(data.from, null, data.data);
+            // Relay-only mode — ignore WebRTC offers from other peers
             break;
 
         case 'answer':
-            {
-                const peerState = APP.state.peers.get(data.from);
-                if (peerState && peerState.pc && data.data) {
-                    peerState.pc.setRemoteDescription(new RTCSessionDescription(data.data))
-                        .catch(e => console.error('[PC] setRemoteDescription(answer) error', e));
-                }
-            }
+            // Relay-only mode — ignore WebRTC answers
             break;
 
         case 'ice-candidate':
-            {
-                const peerState = APP.state.peers.get(data.from);
-                if (peerState && peerState.pc && data.data) {
-                    peerState.pc.addIceCandidate(new RTCIceCandidate(data.data))
-                        .catch(e => console.error('[PC] addIceCandidate error', e));
-                }
-            }
+            // Relay-only mode — ignore ICE candidates
             break;
 
         case 'peer_left':
