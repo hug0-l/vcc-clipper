@@ -178,6 +178,16 @@ class ChatModule extends ClipperModule {
             text, timestamp, acks: new Set(), totalPeers: peerCount, div: null
         });
 
+        // Save to local persisted messages BEFORE rendering (_renderChatRange reads from it)
+        APP.state.persistedChatMessages.push({ from: APP.state.displayName, text, timestamp, msgId, replyTo });
+        saveToStorage('vcc_chat_messages', APP.state.persistedChatMessages.slice(-200));
+        if (APP.state.persistedChatMessages.length > 200) {
+            APP.state.persistedChatMessages = APP.state.persistedChatMessages.slice(-200);
+        }
+        if (APP.state._chatVisibleCount < APP.state.persistedChatMessages.length) {
+            APP.state._chatVisibleCount++;
+        }
+
         broadcastToPeers(JSON.stringify(msg));
         this._renderChatMessage(APP.state.displayName, text, timestamp, msgId, replyTo);
 
