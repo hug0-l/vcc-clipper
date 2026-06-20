@@ -719,7 +719,9 @@
                   if (ps.pc) try { ps.pc.close(); } catch (_) {}
                 }
                 this._peers.delete(p.peerId);
-                this._emit('peer-left', p.peerId);
+                // Preserve displayName before deletion
+                const leftInfo1 = { peerId: p.peerId, displayName: p.displayName || '' };
+                this._emit('peer-left', leftInfo1);
               }
             });
             this._state.peers = data.peers;
@@ -757,10 +759,11 @@
               if (ps.dc) try { ps.dc.close(); } catch (_) {}
               if (ps.pc) try { ps.pc.close(); } catch (_) {}
             }
+            const leftPeer = { peerId: data.peerId, displayName: data.displayName || (ps ? ps.displayName : '') || '' };
+            this._peers.delete(data.peerId);
+            this._state.peers = this._state.peers.filter(p => p.peerId !== data.peerId);
+            this._emit('peer-left', leftPeer);
           }
-          this._peers.delete(data.peerId);
-          this._state.peers = this._state.peers.filter(p => p.peerId !== data.peerId);
-          this._emit('peer-left', data.peerId);
           break;
 
         // ---- P2P WebRTC Signaling ----
