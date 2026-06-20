@@ -162,9 +162,13 @@ main {
     flex: 1;
     animation: fadeIn 0.2s ease;
 }
-/* Non-chat tabs scroll naturally; chat tab has its own inner scroll */
+/* Non-chat tabs scroll naturally */
 .tab-pane.active:not([data-tab="clipboard"]) {
     overflow-y: auto;
+}
+/* Chat tab: constrain height so inner chat-messages scroll works */
+.tab-pane.active[data-tab="clipboard"] {
+    overflow: hidden;
 }
 @keyframes fadeIn {
     from { opacity: 0.3; }
