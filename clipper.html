@@ -1502,16 +1502,26 @@ footer input[type="text"] {
     <button class="btn btn-secondary sync-btn" id="btnSync" style="display:none;font-size:12px;padding:3px 8px;">🔄 同步</button>
 </footer>
 
-<!-- Clipper JS Core (order matters):
+<!-- Clipper JS Core & Modules (order matters):
      1. message-bus.js — Event bus (MessageBus)
      2. ws-manager.js — WebSocket manager (WSManager)
      3. module-base.js — Module base class (ClipperModule)
-     4. modules/templates-module.js — Templates feature module
+     4. chat-module.js — Chat messaging
+     5. files-module.js — File transfer
+     6. notice-module.js — Notice board
+     7. checklist-module.js — Checklist + import/export
+     8. keymgmt-module.js — Key management
+     9. templates-module.js — Checklist templates
 -->
 
 <script src="js/core/message-bus.js"></script>
 <script src="js/core/ws-manager.js"></script>
-<script src="js/core/module-base.js"></script><script src="js/modules/notice-module.js"></script>
+<script src="js/core/module-base.js"></script>
+<script src="js/modules/chat-module.js"></script>
+<script src="js/modules/files-module.js"></script>
+<script src="js/modules/notice-module.js"></script>
+<script src="js/modules/checklist-module.js"></script>
+<script src="js/modules/keymgmt-module.js"></script>
 <script src="js/modules/templates-module.js"></script>
 <script>
 // Polyfill crypto.randomUUID for older browsers
@@ -2344,133 +2354,9 @@ function handleWsMessage(data) {
             break;
         }
 
-        case 'checklistboard-create':
-            // data.board — full board
-            if (!APP.state.checklists.some(b => b.id === data.board.id)) {
-                APP.state.checklists.push(data.board);
-                saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                renderChecklistBoards();
-                showPopup('✅', '新檢查清單', (data.board && data.board.createdBy ? data.board.createdBy + '：' : '') + (data.board && data.board.title ? data.board.title : ''));
-            }
-            break;
-
-        case 'checklistboard-edit':
-            // data.id, data.title, data.category, data.tags, data.color
-            {
-                const board = APP.state.checklists.find(b => b.id === data.id);
-                if (board) {
-                    if (data.title !== undefined) board.title = data.title;
-                    if (data.category !== undefined) board.category = data.category;
-                    if (data.tags !== undefined) board.tags = data.tags;
-                    if (data.color !== undefined) board.color = data.color;
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                }
-            }
-            break;
-
-        case 'checklistboard-delete':
-            // data.id
-            APP.state.checklists = APP.state.checklists.filter(b => b.id !== data.id);
-            saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-            renderChecklistBoards();
-            break;
-
-        case 'checklistboard-pin':
-            // data.id, data.pinned
-            {
-                const pinBoard = APP.state.checklists.find(b => b.id === data.id);
-                if (pinBoard) {
-                    pinBoard.pinned = data.pinned;
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                }
-            }
-            break;
-
-        case 'checklistboard-remind':
-            // data.id, data.reminderAt, data.reminderTitle
-            {
-                const remBoard = APP.state.checklists.find(b => b.id === data.id);
-                if (remBoard) {
-                    remBoard.reminderAt = data.reminderAt;
-                    remBoard.reminderTitle = data.reminderTitle || '';
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                }
-            }
-            break;
-
-        case 'checklist-add':
-            // data.checklistId, data.item
-            {
-                const addBoard = APP.state.checklists.find(b => b.id === data.checklistId);
-                if (addBoard && !addBoard.items.some(i => i.id === data.item.id)) {
-                    addBoard.items.push(data.item);
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                    showPopup('✅', '新待辦項目', (data.item && data.item.addedBy ? data.item.addedBy + ' 在「' + addBoard.title + '」：' : '') + (data.item && data.item.text ? data.item.text : ''));
-                }
-            }
-            break;
-
-        case 'checklist-toggle':
-            // data.checklistId, data.id, data.checked, data.checkedAt
-            {
-                const tglBoard = APP.state.checklists.find(b => b.id === data.checklistId);
-                if (tglBoard) {
-                    const tglItem = tglBoard.items.find(i => i.id === data.id);
-                    if (tglItem) {
-                        tglItem.checked = data.checked;
-                        tglItem.checkedAt = data.checkedAt;
-                        saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                        renderChecklistBoards();
-                    }
-                }
-            }
-            break;
-
-        case 'checklist-delete':
-            // data.checklistId, data.id
-            {
-                const delBoard = APP.state.checklists.find(b => b.id === data.checklistId);
-                if (delBoard) {
-                    delBoard.items = delBoard.items.filter(i => i.id !== data.id);
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                }
-            }
-            break;
-
-        case 'checklist-reset':
-            // data.id — checklist board id
-            {
-                const rBoard = APP.state.checklists.find(b => b.id === data.id);
-                if (rBoard) {
-                    for (const item of rBoard.items) {
-                        item.checked = false;
-                        item.checkedAt = null;
-                    }
-                    saveToStorage(APP.roomKey('vcc_checklists'), APP.state.checklists);
-                    renderChecklistBoards();
-                }
-            }
-            break;
 
         case 'file-cancel':
-            // Sender received cancel from receiver — stop sending this file
-            if (data.fileId) {
-                for (const [pid, entry] of APP.state.fileSending) {
-                    if (entry.fileId === data.fileId) {
-                        entry.status = 'cancelled';
-                        APP.state.fileSending.delete(pid);
-                        break;
-                    }
-                }
-                APP.state.fileQueue = APP.state.fileQueue.filter(f => f.fileId !== data.fileId);
-                updateFileUI();
-                APP.showStatusMsg('❌ 傳送已取消：' + (data.fileId || ''));
-            }
+            APP.files?._handleFileCancel(data);
             break;
 
         case 'time-sync':
