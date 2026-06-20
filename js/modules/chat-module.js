@@ -268,7 +268,7 @@ class ChatModule extends ClipperModule {
         const displayFrom = APP.state.peerNames.get(from) || from;
         const isSelf = from === APP.state.displayName;
         const side = isSelf ? 'self' : 'other';
-        const timeStr = new Date(timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const timeStr = new Date(timestamp).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
         const div = document.createElement('div');
         div.className = 'chat-msg ' + side;
         if (msgId) div.dataset.msgid = msgId;
@@ -280,19 +280,22 @@ class ChatModule extends ClipperModule {
             innerHtml += '<div class="msg-quote"><div class="quote-from">↩ ' + escapeHtml(replyFrom) + '</div><div class="quote-text">' + escapeHtml(replyTo.text) + '</div></div>';
         }
 
+        // Body text
+        innerHtml += '<div class="msg-body">' + escapeHtml(text) + '</div>';
+
         if (!isSelf) {
             const { hue, light, dark } = this._userColor(from);
             div.style.setProperty('--msg-bg-dark', dark);
-            innerHtml += '<div class="msg-sender"><span class="msg-avatar" style="background:' + light + '">' + escapeHtml(displayFrom.charAt(0)) + '</span><span style="color:' + light + '">' + escapeHtml(displayFrom) + '</span></div>'
-                + '<div class="msg-text">' + escapeHtml(text) + '</div>'
-                + '<div class="msg-time">' + timeStr + '</div>';
+            // Footer for others: time on left
+            innerHtml = '<div class="chat-msg-avatar-header"><span class="msg-avatar" style="background:' + light + '">' + escapeHtml(displayFrom.charAt(0)) + '</span><span class="msg-avatar-name" style="color:' + light + '">' + escapeHtml(displayFrom) + '</span></div>'
+                + innerHtml
+                + '<div class="msg-footer other"><span class="msg-time">' + timeStr + '</span></div>';
         } else {
             const { hue, light } = this._userColor(from);
             const entry = msgId ? APP.state.sentMessages.get(msgId) : null;
             const tick = entry ? '<span class="msg-tick' + (entry.acks.size >= entry.totalPeers ? ' delivered' : ' sent') + '">' + (entry.acks.size >= entry.totalPeers ? '✓✓' : '✓') + '</span>' : '';
-            innerHtml += '<div class="msg-sender"><span class="msg-avatar" style="background:' + light + '">' + escapeHtml(displayFrom.charAt(0)) + '</span>' + escapeHtml(displayFrom) + '</div>'
-                + '<div class="msg-text">' + escapeHtml(text) + '</div>'
-                + '<div class="msg-time">' + timeStr + ' ' + tick + '</div>';
+            // Footer for self: time + tick on right
+            innerHtml += '<div class="msg-footer self"><span class="msg-time">' + timeStr + '</span>' + tick + '</div>';
         }
 
         innerHtml += '<div class="chat-msg-actions">'
