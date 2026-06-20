@@ -10,7 +10,8 @@
  *
  * 事件列表：
  *   connected, disconnected, chat, notice, peer-joined, peer-left,
- *   state, error, readonly
+ *   state, error, readonly, typing, typing-stop, chat-edit, chat-delete,
+ *   reply, ack
  */
 (function (global) {
   'use strict';
@@ -233,6 +234,119 @@
             data: payload,
           });
         }
+      }
+      return true;
+    }
+
+    /**
+     * 發送輸入中通知（廣播）
+     */
+    typing() {
+      if (!this._connected || !this._state.room) return false;
+      const payload = {type: 'typing', from: this.displayName || this._peerId};
+      // P2P via DC
+      for (const [pid, ps] of this._peers) {
+        if (ps && ps.dc && ps.dc.readyState === 'open') {
+          try { ps.dc.send(JSON.stringify(payload)); } catch (_) {}
+        }
+      }
+      // WS relay broadcast
+      this._send({type: 'relay-data', room: this._state.room, to: '*broadcast*', data: payload});
+      return true;
+    }
+
+    /**
+     * 停止輸入中通知（廣播）
+     */
+    typingStop() {
+      if (!this._connected || !this._state.room) return false;
+      const payload = {type: 'typing-stop', from: this.displayName || this._peerId};
+      for (const [pid, ps] of this._peers) {
+        if (ps && ps.dc && ps.dc.readyState === 'open') {
+          try { ps.dc.send(JSON.stringify(payload)); } catch (_) {}
+        }
+      }
+      this._send({type: 'relay-data', room: this._state.room, to: '*broadcast*', data: payload});
+      return true;
+    }
+
+    /**
+     * 編輯訊息
+     * @param {string} msgId
+     * @param {string} newText
+     */
+    editMessage(msgId, newText) {
+      if (!this._connected || !this._state.room || !msgId) return false;
+      const payload = {type: 'chat-edit', msgId, newText, from: this.displayName || this._peerId};
+      for (const [pid, ps] of this._peers) {
+        if (ps && ps.dc && ps.dc.readyState === 'open') {
+          try { ps.dc.send(JSON.stringify(payload)); } catch (_) {}
+        }
+      }
+      this._send({type: 'relay-data', room: this._state.room, to: '*broadcast*', data: payload});
+      return true;
+    }
+
+    /**
+     * 刪除訊息
+     * @param {string} msgId
+     */
+    deleteMessage(msgId) {
+      if (!this._connected || !this._state.room || !msgId) return false;
+      const payload = {type: 'chat-delete', msgId};
+      for (const [pid, ps] of this._peers) {
+        if (ps && ps.dc && ps.dc.readyState === 'open') {
+          try { ps.dc.send(JSON.stringify(payload)); } catch (_) {}
+        }
+      }
+      this._send({type: 'relay-data', room: this._state.room, to: '*broadcast*', data: payload});
+      return true;
+    }
+
+    /**
+     * 回覆訊息（如同 sendChat 但 payload 包含 replyTo）
+     * @param {string} text
+     * @param {Object} replyTo — {msgId, text, from}
+     * @returns {boolean}
+     */
+    sendReply(text, replyTo) {
+      if (!text || !this._connected || !this._state.room) return false;
+      const msg = {
+        from: this.displayName || this._peerId,
+        text: text,
+        timestamp: Date.now(),
+        replyTo: replyTo,
+      };
+      // Optimistic local store
+      this._state.chatMessages.push(msg);
+      this._emit('chat', msg);
+      this._emit('reply', {msgId: msg.msgId, text: msg.text, from: msg.from, replyTo});
+
+      // P2P
+      const dcPayload = {type: 'chat', from: msg.from, text: msg.text, timestamp: msg.timestamp, replyTo};
+      for (const [pid, ps] of this._peers) {
+        if (ps && ps.dc && ps.dc.readyState === 'open') {
+          try { ps.dc.send(JSON.stringify(dcPayload)); } catch (_) {}
+        }
+      }
+      // chat-backup for server persistence
+      this._send({
+        type: 'chat-backup',
+        room: this._state.room,
+        text: msg.text,
+        from: msg.from,
+        timestamp: msg.timestamp,
+        replyTo: replyTo,
+      });
+      // WS relay
+      const relayPayload = {type: 'chat', from: msg.from, text: msg.text, timestamp: msg.timestamp, msgId: this._uuid(), replyTo};
+      for (const [peerId] of this._peers) {
+        this._send({
+          type: 'relay-data',
+          room: this._state.room,
+          to: peerId,
+          data: relayPayload,
+        });
       }
       return true;
     }
@@ -978,8 +1092,26 @@
               text: data.data.text,
               timestamp: data.data.timestamp,
             };
+            if (data.data.replyTo) chatMsg.replyTo = data.data.replyTo;
             this._state.chatMessages.push(chatMsg);
             this._emit('chat', chatMsg);
+            if (data.data.replyTo) {
+              this._emit('reply', {msgId: data.data.msgId, text: data.data.text, from: data.data.from, replyTo: data.data.replyTo});
+            }
+            // 自動回 ack
+            if (data.data.msgId) {
+              this._send({type: 'relay-data', room: this._state.room, to: data.from, data: {type: 'ack', msgId: data.data.msgId}});
+            }
+          } else if (data.data && data.data.type === 'typing') {
+            this._emit('typing', {from: data.from, displayName: data.data.from});
+          } else if (data.data && data.data.type === 'typing-stop') {
+            this._emit('typing-stop', {from: data.from});
+          } else if (data.data && data.data.type === 'chat-edit') {
+            this._emit('chat-edit', {msgId: data.data.msgId, newText: data.data.newText, from: data.data.from});
+          } else if (data.data && data.data.type === 'chat-delete') {
+            this._emit('chat-delete', {msgId: data.data.msgId});
+          } else if (data.data && data.data.type === 'ack') {
+            this._emit('ack', {msgId: data.data.msgId, from: data.from});
           } else if (data.data && data.data.type === 'file-meta') {
             const meta = data.data;
             const fromPeer = this._peers.get(data.from);
@@ -1289,14 +1421,29 @@
         this._emit('transport', { peerId, mode: 'relay' });
       };
 
-      // Handle incoming DC messages (chat, file-meta, file-done)
+      // Handle incoming DC messages (chat, typing, edit, delete, reply, ack, file-meta, file-done)
       dc.onmessage = (event) => {
         if (typeof event.data === 'string') {
           try {
             const msg = JSON.parse(event.data);
             if (msg.type === 'chat') {
-              this._state.chatMessages.push({ from: msg.from, text: msg.text, timestamp: msg.timestamp });
-              this._emit('chat', { from: msg.from, text: msg.text, timestamp: msg.timestamp });
+              const chatEntry = { from: msg.from, text: msg.text, timestamp: msg.timestamp };
+              if (msg.replyTo) chatEntry.replyTo = msg.replyTo;
+              this._state.chatMessages.push(chatEntry);
+              this._emit('chat', chatEntry);
+              if (msg.replyTo) {
+                this._emit('reply', {msgId: msg.msgId, text: msg.text, from: msg.from, replyTo: msg.replyTo});
+              }
+            } else if (msg.type === 'typing') {
+              this._emit('typing', {from: peerId, displayName: msg.from});
+            } else if (msg.type === 'typing-stop') {
+              this._emit('typing-stop', {from: peerId});
+            } else if (msg.type === 'chat-edit') {
+              this._emit('chat-edit', {msgId: msg.msgId, newText: msg.newText, from: msg.from});
+            } else if (msg.type === 'chat-delete') {
+              this._emit('chat-delete', {msgId: msg.msgId});
+            } else if (msg.type === 'ack') {
+              this._emit('ack', {msgId: msg.msgId, from: peerId});
             } else if (msg.type === 'file-meta') {
               const dcFromPeer = this._peers.get(peerId);
               const dcFromName = dcFromPeer ? (dcFromPeer.displayName || peerId) : peerId;
