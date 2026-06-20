@@ -1856,13 +1856,16 @@ diagnosticModule.mount(document.createElement('div'));
 
 // ========== Module Initialization & Global Wrappers ==========
 // Create module instances for backward compat with legacy code
+const chatModule = new ChatModule(wsBus, wsManager);
+window.chatModule = chatModule;
 const noticeModule = new NoticeModule(wsBus, wsManager);
 window.noticeModule = noticeModule;
 const checklistModule = new ChecklistModule(wsBus, wsManager);
 window.checklistModule = checklistModule;
 const keymgmtModule = new KeyMgmtModule(wsBus, wsManager);
 window.keymgmtModule = keymgmtModule;
-// Mount modules (they self-register WS handlers in constructor)
+// Mount modules (they self-register WS handlers + wire events)
+chatModule.mount(document.getElementById('chatPanel') || document.createElement('div'));
 noticeModule.mount(document.createElement('div'));
 checklistModule.mount(document.createElement('div'));
 keymgmtModule.mount(document.createElement('div'));
