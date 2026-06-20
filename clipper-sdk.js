@@ -565,6 +565,19 @@
     }
 
     /**
+     * 更新顯示名稱（同步到 server，server 廣播 peer-list 給所有人）
+     * 此操作保持靜默 — 不產生 system 訊息
+     * @param {string} name - 新顯示名稱
+     */
+    setDisplayName(name) {
+      if (!name || !name.trim()) return;
+      this.displayName = name.trim();
+      if (this._connected && this._state.room) {
+        this._send({ type: 'register-name', room: this._state.room, displayName: this.displayName });
+      }
+    }
+
+    /**
      * 重新傳送失敗的檔案（重新加入 queue）
      * @param {string} peerId
      * @param {string} fileId
@@ -667,6 +680,7 @@
         // ---- 名稱 ----
         case 'name-resolved':
           this.displayName = data.displayName;
+          this._emit('name-updated', { displayName: data.displayName });
           break;
 
         // ---- 房間狀態 ----

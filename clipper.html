@@ -2565,9 +2565,6 @@ function handleWsMessage(data) {
                 APP.state.displayName = data.displayName;
                 document.getElementById('displayNameSpan').textContent = APP.state.displayName;
                 saveToStorage('vcc_display_name', APP.state.displayName);
-                if (data.wasConflict) {
-                    APP.showStatusMsg(`ℹ️ 名稱「${data.displayName.replace(/\d+$/, '')}」已被使用，已自動改為「${data.displayName}」`);
-                }
             }
             break;
 
