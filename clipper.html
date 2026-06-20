@@ -1509,35 +1509,39 @@ footer input[type="text"] {
         </div>
     </section>
     <section class="tab-pane" data-tab="about">
-        <div style="max-width:500px;margin:0 auto;">
+        <div style="max-width:540px;margin:0 auto;">
             <h2 style="font-size:25px;font-weight:600;margin-bottom:12px;">關於 Clipper</h2>
             <p style="color:#94a3b8;margin-bottom:20px;line-height:1.7;">
                 Clipper 是一套內網跨子網 P2P 多人協作工具，透過 WebRTC 建立點對點連線，
                 搭配 WebSocket 信令伺服器進行配對與持久化資料儲存。支援多達 50 台裝置同時連線。
+                採用模組化架構，各功能獨立隔離，單一模組故障不影響其他功能。
             </p>
             <table style="color:#94a3b8;font-size:16px;line-height:2;">
-                <tr><td style="padding-right:20px;color:#64748b;">版本</td><td id="aboutVersion">v1.1.0</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;">版本</td><td id="aboutVersion">v2.0.0</td></tr>
                 <tr><td style="padding-right:20px;color:#64748b;">作者</td><td>Hugo Leung</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">技術</td><td>WebRTC · WebSocket · Python · WebSockets</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;">技術</td><td>WebRTC · WebSocket · Python · SQLite · Vanilla JS</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;">前端架構</td><td>7 ClipperModule — 故障隔離</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;">後端架構</td><td>7 Service 模組 · 路由表</td></tr>
                 <tr><td style="padding-right:20px;color:#64748b;">授權</td><td>MIT</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">檔案</td><td>clipper.html (2,900+ 行) + signal_server.py (630+ 行)</td></tr>
             </table>
             <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;">🚀 功能</h3>
             <ul style="color:#94a3b8;font-size:16px;line-height:2;padding-left:20px;">
-                <li>💬 實時短信 — 即時 P2P 訊息廣播，自動 WS Relay 後備</li>
-                <li>📁 檔案傳輸 — 拖放上傳，支援大檔案區塊傳送，指定對象傳送</li>
-                <li>📋 公告欄 — 分類（重要/日常/交接事項/其他事項）、標籤、色碼、釘選</li>
-                <li>✅ 檢查清單 — 階層式 Board、10 色色盤、標籤、釘選、排程提醒、Tick Reset</li>
-                <li>⚙️ 設定頁 — 檢視傳輸模式（P2P / Relay）及各用戶連線狀態</li>
-                <li>🖥️ 伺服器持久化 — 所有資料儲存於 vcc_server_state.json</li>
-                <li>🔍 Debug Dump — 一鍵輸出伺服器完整診斷</li>
+                <li>💬 實時短信 — P2P 即時訊息，使用者頭像色碼 + 漸層泡泡</li>
+                <li>📁 檔案傳輸 — 拖放上傳，佇列傳送，SHA-256 完整性驗證</li>
+                <li>📋 公告欄 — 4 級分類、標籤、釘選、側邊欄一覽</li>
+                <li>✅ 檢查清單 — 階層式 Board、10 色色盤、釘選、排程提醒、<strong>JSON/Markdown 匯出入</strong></li>
+                <li>🔑 密鑰管理 — 串流金鑰 CRUD，啟用/停用切換</li>
+                <li>📚 範本庫 — 檢查清單範本建立/套用</li>
+                <li>🧪 系統診斷 — 即時健康儀表板、Event Loop 監控、Sparkline 走勢、事件時間線</li>
+                <li>⚙️ 設定頁 — P2P / Relay 傳輸模式檢視、NTP 時間同步</li>
+                <li>🖥️ 伺服器持久化 — SQLite 統一儲存（自動備份、匯入匯出）</li>
+                <li>🔍 錯誤聚合 — 所有例外集中記錄，可視化查閱</li>
+                <li>🛡️ 離線唯讀防護 — 斷線自動鎖定，重連自動恢復</li>
+                <li>🧟 幽靈復活防護 — 刪除 ID 伺服器記錄，重連不過濾</li>
                 <li>👥 Full Mesh 網狀網路 — 最多 50 台同時連線</li>
                 <li>🏷️ 顯示名稱系統 — 隨機中文暱稱，跨 F5 保留</li>
                 <li>🕐 頁頂時鐘 — 即時 hh:mm:ss 及當日日期</li>
-                <li>🔗 預設配對碼 — 開啟頁面即自動連接 room 1234</li>
-                <li>🔔 排程提醒 — 檢查清單可設定時間，到期自動彈窗通知</li>
-                <li>🔄 手動同步 — 狀態指示器 + 同步按鈕</li>
-                <li>📱 自適應佈局 — 視窗縮小時排版自動折疊</li>
+                <li>📱 自適應佈局 — 響應式斷點 768px，通知側欄可切換</li>
             </ul>
             <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;color:#f59e0b;">🔒 資訊安全提醒</h3>
             <div style="background:#451a03;border:1px solid #991b1b;border-radius:8px;padding:12px 16px;font-size:14px;color:#fdba74;line-height:1.7;margin-bottom:16px;">
@@ -1545,8 +1549,7 @@ footer input[type="text"] {
                 <ul style="padding-left:16px;margin-top:8px;">
                     <li>所有 P2P 訊息經 DTLS 加密，但 <strong>不建議</strong> 在不受信任的網路上傳輸敏感資料</li>
                     <li>信令伺服器本身以明文 WebSocket 運行（<code>ws://</code>），配對及 Relay 過程無加密</li>
-                    <li>擁有配對代碼的任何用戶均可加入房間並存取所有資料（公告欄、檢查清單、檔案）</li>
-                    <li>檔案傳輸透過 P2P DataChannel 或 WS Relay 進行，無端對端加密驗證</li>
+                    <li>擁有配對代碼的任何用戶均可加入房間並存取所有共享資料</li>
                     <li>聊天訊息會備份至伺服器（留存天數可調），請勿傳送機密對話</li>
                     <li>建議在公司內部可信任網路中使用，若需跨網際網路請自行配置 WSS/TLS</li>
                 </ul>
