@@ -1503,6 +1503,7 @@ footer input[type="text"] {
 </footer>
 
 <script src="js/core/message-bus.js"></script>
+<script src="js/core/ws-manager.js"></script>
 <script>
 // Polyfill crypto.randomUUID for older browsers
 if (!crypto.randomUUID) {
@@ -1658,6 +1659,55 @@ const APP = {
         }
     }
 };
+
+// ========== WSManager ==========
+const wsBus = new MessageBus();
+const wsManager = new WSManager('ws://localhost:8765', wsBus);
+
+// WS lifecycle → APP.state sync
+wsBus.on('connected', () => {
+    APP.state.ws = wsManager._ws;
+    APP.showStatusMsg('WS 已連線');
+});
+
+wsBus.on('disconnected', ({ wasIntentional }) => {
+    APP.state.ws = null;
+    const hadRoom = !!APP.state.room;
+    if (hadRoom) {
+        APP.state._lastRoom = hadRoom;
+        if (!wasIntentional) {
+            setReadOnly(true);
+            APP.showError('⚠ 信令伺服器離線', false);
+        }
+    }
+    cleanupConnection();
+    if (wasIntentional) {
+        setReadOnly(false);
+        APP.showStatusMsg('已中斷連線');
+    } else if (!hadRoom) {
+        APP.showStatusMsg('連線中斷');
+    }
+});
+
+wsBus.on('reconnecting', ({ attempt, delay }) => {
+    APP.state._reconnectCount = attempt;
+    APP.showStatusMsg(`🔄 第 ${attempt} 次重連 (${Math.round(delay / 1000)}s)...`);
+});
+
+wsBus.on('reconnected', () => {
+    APP.state._reconnectCount = 0;
+    document.getElementById('errorToast').className = '';
+    APP.showStatusMsg('🔄 重連成功');
+    const roomToJoin = APP.state._lastRoom || APP.state.room;
+    if (roomToJoin) {
+        sendWsMessage({type: 'join', room: roomToJoin, displayName: APP.state.displayName});
+    } else {
+        sendWsMessage({type: 'generate'});
+    }
+});
+
+// Enable auto-reconnect with exponential backoff
+wsManager.enableAutoReconnect();
 
 const CHAT_PAGE_SIZE = 30;          // 每次載入更多增加條數
 const CHAT_MAX_VISIBLE = 200;
@@ -2452,81 +2502,24 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ========== WebSocket ==========
 
 function autoReconnect() {
-    const count = APP.state._reconnectCount || 0;
-    const delay = Math.min(2000 * Math.pow(2, count), 30000);
-    if (APP.state._reconnectTimer) clearTimeout(APP.state._reconnectTimer);
-    APP.state._reconnectTimer = setTimeout(() => {
-        APP.state._reconnectCount++;
-        const url = document.getElementById('serverUrl').value.trim() || 'ws://localhost:8765';
-        APP.showStatusMsg(`🔄 第 ${APP.state._reconnectCount} 次重連 (${Math.round(delay / 1000)}s)...`);
-        APP.updateStatus('connecting');
-        connectWebSocket(url).then(() => {
-            APP.state._reconnectCount = 0;
-            APP.state._reconnectTimer = null;
-            document.getElementById('errorToast').className = '';
-            const roomToJoin = APP.state._lastRoom || APP.state.room;
-            if (roomToJoin) {
-                sendWsMessage({type: 'join', room: roomToJoin, displayName: APP.state.displayName});
-            } else {
-                sendWsMessage({type: 'generate'});
-            }
-        }).catch(() => {
-            APP.showStatusMsg(`❌ 重連失敗 (${APP.state._reconnectCount} 次)`);
-            autoReconnect();
-        });
-    }, delay);
-    APP.showStatusMsg(`🔄 ${Math.round(delay / 1000)} 秒後自動重連...`);
+    // Handled by WSManager with exponential backoff
+    console.log('[WS] Auto-reconnect delegated to WSManager');
 }
 
 function connectWebSocket(url) {
-    return new Promise((resolve, reject) => {
-        const ws = new WebSocket(url);
-        ws.onopen = () => {
-            console.log('[WS] Connected');
-            APP.state.ws = ws;
-            APP.showStatusMsg('WS 已連線');
-            resolve(ws);
-        };
-        ws.onerror = (err) => {
-            console.error('[WS] Error', err);
-            if (APP.state.room) setReadOnly(true);
-            reject(err);
-        };
-        ws.onclose = () => {
-            console.log('[WS] Closed');
-            if (APP.state.ws === ws) {
-                APP.state.ws = null;
-                const hadRoom = APP.state.room;
-                if (hadRoom) {
-                    APP.state._lastRoom = hadRoom;
-                    const wasIntentional = APP.state.intentionalDisconnect;
-                    cleanupConnection();
-                    if (!wasIntentional) {
-                        setReadOnly(true);
-                        APP.showError(`⚠ 信令伺服器離線 — ${APP.state._reconnectCount || 0 > 0 ? `第 ${APP.state._reconnectCount} 次重連中...` : '即將自動重連'}`, false);
-                        autoReconnect();
-                    }
-                    APP.showStatusMsg('連線中斷');
-                }
-            }
-        };
-        ws.onmessage = (event) => {
-            let data;
-            try {
-                data = JSON.parse(event.data);
-            } catch (_) {
-                console.warn('[WS] Non-JSON message', event.data);
-                return;
-            }
-            handleWsMessage(data);
-        };
-    });
+    if (url && url !== wsManager._url) {
+        wsManager._url = url;
+        // URL changed — force new connection
+        if (wsManager._ws) {
+            try { wsManager._ws.close(); } catch (_) {}
+            wsManager._ws = null;
+        }
+    }
+    return wsManager.connect();
 }
 
 function sendWsMessage(obj) {
-    if (APP.state.ws && APP.state.ws.readyState === WebSocket.OPEN) {
-        APP.state.ws.send(JSON.stringify(obj));
-    }
+    wsManager.send(obj);
 }
 
 // ========== Message Router ==========
@@ -3065,6 +3058,8 @@ function handleWsMessage(data) {
         APP.showError('處理訊息時發生錯誤: ' + (e.message || e), false);
     }
 }
+// Register the legacy message handler on WSManager for backward compat
+wsManager.onMessage('*', handleWsMessage, 'legacy');
 
 // ========== Peer Connection Management ==========
 
@@ -3419,21 +3414,11 @@ function cleanupConnection() {
     APP.state.fileSending.clear();
     if (APP.state.fileReceives) APP.state.fileReceives.clear();
     if (APP.state.peerCurrentFile) APP.state.peerCurrentFile.clear();
-    // Close WebSocket
-    if (APP.state.ws) {
-        try { APP.state.ws.close(); } catch (_) {}
-        APP.state.ws = null;
-    }
-    // Clear file transfer state
-    APP.state.fileQueue = [];
-    APP.state.fileSending.clear();
-    if (APP.state.fileReceives) APP.state.fileReceives.clear();
     // Reset connection state
     const hadRoom = !!APP.state.room;
     APP.state.room = null;
     APP.state.myPeerId = null;
     APP.state.connected = false;
-    APP.state.intentionalDisconnect = false;
     APP.setRoomCode(null);
     // Hide peerId badge
     var peerIdBadge2 = document.getElementById('peerIdBadge');
@@ -3497,9 +3482,7 @@ function disconnect() {
     APP.state.intentionalDisconnect = true;
     if (APP.state._heartbeatInterval) { clearInterval(APP.state._heartbeatInterval); APP.state._heartbeatInterval = null; }
     APP.showStatusMsg('正在中斷連線...');
-    cleanupConnection();
-    setReadOnly(false);
-    APP.showStatusMsg('已中斷連線');
+    wsManager.disconnect();
 }
 
 
