@@ -758,7 +758,7 @@ async def handler(websocket):
                 cutoff = (time.time() - retention * 86400) * 1000
                 room_data[rid]["chatMessages"] = [
                     m for m in room_data[rid]["chatMessages"]
-                    if m["timestamp"] > cutoff
+                    if float(m["timestamp"]) > cutoff
                 ]
                 _save_state()
                 _log('CHAT-BACKUP', f'{my_peer_id} backed up chat msg in {rid} ({len(room_data[rid]["chatMessages"])} stored)')
@@ -1083,12 +1083,13 @@ async def handler(websocket):
                     cutoff = (time.time() - retention * 86400) * 1000
                     filtered = [
                         m for m in room_data[rid].get("chatMessages", [])
-                        if m["timestamp"] > cutoff
+                        if float(m["timestamp"]) > cutoff
                     ]
                 else:
+                    since_f = float(since) if since is not None else 0
                     filtered = [
                         m for m in room_data[rid].get("chatMessages", [])
-                        if m["timestamp"] > since
+                        if float(m["timestamp"]) > since_f
                     ]
                 await websocket.send(json.dumps({
                     "type": "chat-history-result",
