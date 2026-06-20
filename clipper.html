@@ -3081,9 +3081,6 @@ setInterval(() => {
 const savedMessages = loadFromStorage('vcc_chat_messages', []);
 APP.state.persistedChatMessages = savedMessages;
 APP.state._chatVisibleCount = Math.min(15, savedMessages.length);
-renderChatRange();
-requestAnimationFrame(() => {
-}
 
 // Periodic reminder checker — every 15 seconds
 setInterval(() => {
@@ -3491,38 +3488,28 @@ function updatePeerTargetUI() {
 })();
 // ========== Chat Room ==========
 
-function renderChatMessage(from, text, timestamp, msgId, replyTo) {
-    renderChatRange();
-    requestAnimationFrame(function() {
-        const cm = document.getElementById('chatMessages');
-        if (cm) cm.scrollTop = cm.scrollHeight;
-    });
-}
-
 function appendSystemMessage(text) {
     const timestamp = Date.now();
-    // Persist
     APP.state.persistedChatMessages.push({from: '系統', text, timestamp});
     saveToStorage('vcc_chat_messages', APP.state.persistedChatMessages.slice(-200));
     if (APP.state.persistedChatMessages.length > 200) {
         APP.state.persistedChatMessages = APP.state.persistedChatMessages.slice(-200);
     }
-    // Auto-increment visible count to include new message
-    if (APP.state._chatVisibleCount < APP.state.persistedChatMessages.length) {
-        APP.state._chatVisibleCount++;
-    }
-    // Re-render via range
-    renderChatRange();
-    requestAnimationFrame(function() {
+    // Re-render via chat module if available
+    if (window.chatModule && typeof chatModule.appendSystemMessage === 'function') {
+        chatModule.appendSystemMessage(text);
+    } else {
+        // Fallback: just append to DOM directly
         const cm = document.getElementById('chatMessages');
-        if (cm && APP.state._chatLockedToBottom) cm.scrollTop = cm.scrollHeight;
-    });
+        if (cm) {
+            const div = document.createElement('div');
+            div.style.cssText = 'text-align:center;color:#64748b;font-size:14px;padding:4px;';
+            div.textContent = text;
+            cm.appendChild(div);
+            cm.scrollTop = cm.scrollHeight;
+        }
+    }
 }
-
-// --- Wire up chat UI ---
-document.getElementById('btnChatSend').addEventListener('click', sendChatMessage);
-document.getElementById('chatInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') sendChatMessage();
 });
 document.getElementById('btnClearChat').addEventListener('click', async () => {
     const confirmed = await showConfirmDialog('確定要清除本機聊天紀錄嗎？此操作僅影響本機，不會影響其他客戶端。');
@@ -3581,14 +3568,7 @@ document.getElementById('chatInput')?.addEventListener('input', function() {
     }, 300);
 });
 
-// Clear typing state on send
-const _origSendChatMessage = sendChatMessage;
-sendChatMessage = function() {
-    if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
-    if (_typingStopTimer) { clearTimeout(_typingStopTimer); _typingStopTimer = null; }
-    broadcastToPeers(JSON.stringify({type: 'typing-stop'}));
-    _origSendChatMessage.call(this);
-};
+
 
 // ========== Edit & Delete Chat Messages ==========
 function editChatMessage(msgId) {
