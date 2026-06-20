@@ -1834,7 +1834,7 @@ const APP = {
 
 // ========== WSManager ==========
 const wsBus = new MessageBus();
-const wsManager = new WSManager('ws://localhost:8765', wsBus);
+const wsManager = new WSManager(document.getElementById('serverUrl').value.trim() || _defaultWsUrl(), wsBus);
 
 // WS lifecycle → APP.state sync
 wsBus.on('connected', () => {
@@ -3015,12 +3015,23 @@ APP.updateStatus('disconnected');
 APP.showPairingUI(true);
 APP.showStatusMsg('');
 
-// Load persisted server URL
-const savedUrl = loadFromStorage('vcc_server_url', 'ws://localhost:8765');
+// Auto-detect WS URL from browser hostname
+function _defaultWsUrl() {
+    const loc = window.location;
+    const host = loc.hostname || 'localhost';
+    return 'ws://' + host + ':8765';
+}
+// Load persisted server URL + room ID
+const savedUrl = loadFromStorage('vcc_server_url', _defaultWsUrl());
 document.getElementById('serverUrl').value = savedUrl;
-// Save server URL on change
+const savedRoom = loadFromStorage('vcc_room_id', '1234');
+document.getElementById('pairingCode').value = savedRoom;
+// Save on change
 document.getElementById('serverUrl').addEventListener('change', function() {
     saveToStorage('vcc_server_url', this.value.trim());
+});
+document.getElementById('pairingCode').addEventListener('change', function() {
+    saveToStorage('vcc_room_id', this.value.trim());
 });
 
 // --- Sync button ---
