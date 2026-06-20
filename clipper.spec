@@ -16,8 +16,6 @@ a = Analysis(
         ('protocol.md', '.'),
         ('js', 'js'),
         ('services', 'services'),
-        ('cert.pem', '.'),
-        ('key.pem', '.'),
     ],
     hiddenimports=['websockets', 'asyncio'],
     hookspath=[],
