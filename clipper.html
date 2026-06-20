@@ -1427,6 +1427,7 @@ const APP = {
         checklists: [], // array of board objects
         checklistTemplates: [], // array of template objects {id, title, category, description, color, tags, items[{text}], createdBy, createdAt}
         keyManagements: [],
+        _chatLockedToBottom: true,
         lastSyncTime: null,
         pendingSync: false,
         _reconnectCount: 0,
@@ -3275,10 +3276,16 @@ APP.state.persistedChatMessages = savedMessages;
 for (const msg of savedMessages) {
     renderChatMessage(msg.from, msg.text, msg.timestamp);
 }
-// Scroll to bottom after initial load
+// Scroll to bottom after initial load + lock-to-bottom behavior
 requestAnimationFrame(() => {
     const cm = document.getElementById('chatMessages');
     if (cm) cm.scrollTop = cm.scrollHeight;
+});
+// Scroll listener: unlock when user scrolls up
+document.getElementById('chatMessages').addEventListener('scroll', function() {
+    const el = this;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    APP.state._chatLockedToBottom = atBottom;
 });
 // ========== Checklist v2 ==========
 const CHECKLIST_COLORS = [
@@ -4516,7 +4523,7 @@ function renderChatMessage(from, text, timestamp, msgId) {
         div.style.cssText = 'align-self:center;text-align:center;font-size:11px;color:#475569;padding:2px 0;opacity:0.7;';
         div.textContent = text;
         container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
+        if (APP.state._chatLockedToBottom) container.scrollTop = container.scrollHeight;
         return;
     }
     // Resolve display name: try peerNames map first, fall back to raw from value
@@ -4542,7 +4549,7 @@ function renderChatMessage(from, text, timestamp, msgId) {
             + '<div class="msg-time">' + timeStr + ' ' + tick + '</div>';
     }
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    if (APP.state._chatLockedToBottom) container.scrollTop = container.scrollHeight;
     // Limit to 200 messages
     while (container.children.length > 200) {
         container.removeChild(container.firstChild);
@@ -4563,7 +4570,7 @@ function appendSystemMessage(text) {
     div.style.cssText = 'align-self:center;text-align:center;font-size:11px;color:#475569;padding:2px 0;opacity:0.7;';
     div.textContent = text;
     container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    if (APP.state._chatLockedToBottom) container.scrollTop = container.scrollHeight;
 }
 
 // --- Wire up chat UI ---
