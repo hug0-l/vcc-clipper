@@ -701,9 +701,10 @@ async def handler(websocket):
                     _debug(f"→ TX room_peers count={len(peers_list)} to={my_peer_id}")
 
                     # Notify all existing peers
+                    joiner_name = rooms[room_id][my_peer_id].get("displayName", my_peer_id)
                     _broadcast(
                         rooms[room_id],
-                        {"type": "peer_joined", "peerId": my_peer_id},
+                        {"type": "peer_joined", "peerId": my_peer_id, "displayName": joiner_name},
                         exclude=websocket,
                     )
 

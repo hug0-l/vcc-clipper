@@ -761,7 +761,11 @@
 
         case 'peer_joined':
           {
-            const peer = { peerId: data.peerId, displayName: data.displayName, pc: null, dc: null, connected: false, relay: false };
+            // 保留已有的 displayName（若有），避免 server 未送時覆蓋
+            const existing = this._peers.get(data.peerId);
+            const displayName = data.displayName || (existing ? existing.displayName : '') || '新成員';
+            const peer = { peerId: data.peerId, displayName: displayName, pc: null, dc: null, connected: false, relay: false };
+            if (existing) { peer.pc = existing.pc; peer.dc = existing.dc; peer.connected = existing.connected; peer.relay = existing.relay; }
             this._peers.set(data.peerId, peer);
             if (!this._state.peers.find(p => p.peerId === data.peerId)) {
               this._state.peers.push(peer);
