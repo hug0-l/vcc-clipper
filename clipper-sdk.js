@@ -79,6 +79,8 @@
       this._pending = {};
       this._peers = new Map();
       this._fileReceives = new Map();
+      this._fileSendQueue = [];        // 檔案傳送佇列
+      this._fileSending = false;       // 是否正在傳送中
 
       // 快取資料
       this._state = {
@@ -444,53 +446,61 @@
         this._emit('file-error', { peerId, fileId: null, message: 'Not connected or invalid file' });
         return;
       }
-      const fileId = this._uuid();
-      const chunkSize = 65536; // 64KB
-      const buffer = await file.arrayBuffer();
-      const totalChunks = Math.ceil(buffer.byteLength / chunkSize);
+      // 加入佇列
+      const entry = { peerId, file, fileId: this._uuid(), name: file.name, size: file.size, status: 'pending' };
+      this._fileSendQueue.push(entry);
+      this._emit('file-progress', { peerId, fileId: entry.fileId, name: entry.name, progress: 0, status: 'queued' });
+      // 如果沒有正在傳送中，啟動佇列
+      if (!this._fileSending) {
+        await this._sendNextFile();
+      }
+    }
 
-      // Send file-meta via relay-data
-      this._send({
-        type: 'relay-data',
-        room: this._state.room,
-        to: peerId,
-        data: {
-          type: 'file-meta',
-          fileId,
-          name: file.name,
-          size: file.size,
-          chunks: totalChunks,
-        },
-      });
+    async _sendNextFile() {
+      if (this._fileSendQueue.length === 0) {
+        this._fileSending = false;
+        return;
+      }
+      this._fileSending = true;
+      const entry = this._fileSendQueue.shift();
+      const { peerId, file, fileId, name } = entry;
+      
+      try {
+        const chunkSize = 65536; // 64KB
+        const buffer = await file.arrayBuffer();
+        const totalChunks = Math.ceil(buffer.byteLength / chunkSize);
 
-      // Send chunks
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * chunkSize;
-        const end = Math.min(start + chunkSize, buffer.byteLength);
-        const slice = buffer.slice(start, end);
-        const b64 = this._arrayBufferToBase64(slice);
+        // Send file-meta
         this._send({
-          type: 'relay-chunk',
-          room: this._state.room,
-          to: peerId,
-          fileId,
-          chunk: b64,
-          index: i,
-          total: totalChunks,
+          type: 'relay-data', room: this._state.room, to: peerId,
+          data: { type: 'file-meta', fileId, name, size: file.size, chunks: totalChunks },
         });
-        // Small delay to avoid flooding WS
-        await this._sleep(10);
-        this._emit('file-progress', { peerId, fileId, name: file.name, progress: Math.round((i + 1) / totalChunks * 100), status: 'sending' });
+
+        // Send chunks sequentially
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * chunkSize;
+          const end = Math.min(start + chunkSize, buffer.byteLength);
+          const b64 = this._arrayBufferToBase64(buffer.slice(start, end));
+          this._send({
+            type: 'relay-chunk', room: this._state.room, to: peerId,
+            fileId, chunk: b64, index: i, total: totalChunks,
+          });
+          await this._sleep(10);
+          this._emit('file-progress', { peerId, fileId, name, progress: Math.round((i + 1) / totalChunks * 100), status: 'sending' });
+        }
+
+        // Send file-done
+        this._send({
+          type: 'relay-data', room: this._state.room, to: peerId,
+          data: { type: 'file-done', fileId },
+        });
+        this._emit('file-sent', { peerId, fileId, name });
+      } catch (err) {
+        this._emit('file-error', { peerId, fileId, message: err.message || 'Send failed' });
       }
 
-      // Send file-done
-      this._send({
-        type: 'relay-data',
-        room: this._state.room,
-        to: peerId,
-        data: { type: 'file-done', fileId },
-      });
-      this._emit('file-sent', { peerId, fileId, name: file.name });
+      // Process next in queue
+      await this._sendNextFile();
     }
 
     /**
