@@ -372,9 +372,14 @@ class ChatModule extends ClipperModule {
             loadMore.textContent = '📜 載入更多 (' + startIdx + ' 條較早訊息)';
             loadMore.style.cssText = 'text-align:center;padding:8px;cursor:pointer;color:#38bdf8;font-size:13px;border-bottom:1px solid #1f2937;';
             loadMore.onclick = () => {
+                // Preserve scroll position: save the height before rendering
+                const prevScrollHeight = container.scrollHeight;
                 APP.state._chatVisibleCount = Math.min(APP.state._chatVisibleCount + this._pageSize, msgs.length);
                 this._renderChatRange();
-                container.scrollTop = 0;
+                // Adjust scroll so view doesn't jump (new older messages appear above)
+                requestAnimationFrame(() => {
+                    container.scrollTop = container.scrollHeight - prevScrollHeight;
+                });
             };
             container.appendChild(loadMore);
         }
