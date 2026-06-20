@@ -476,6 +476,30 @@ def _api_room_chats(room_id):
     return {"messages": room_data[room_id].get("chatMessages", [])}, 200
 
 
+async def _api_send_json(writer, data, status=200):
+    """Send JSON response with CORS headers."""
+    body = json.dumps(data)
+    status_msg = {
+        200: "OK", 201: "Created", 400: "Bad Request", 401: "Unauthorized",
+        403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed",
+        500: "Internal Server Error",
+    }.get(status, "Internal Server Error")
+    response = (
+        f"HTTP/1.1 {status} {status_msg}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        f"Access-Control-Allow-Origin: *\r\n"
+        f"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
+        f"Access-Control-Allow-Headers: Authorization, Content-Type\r\n"
+        f"Cache-Control: no-cache\r\n"
+        f"\r\n"
+        f"{body}"
+    )
+    writer.write(response.encode())
+    await writer.drain()
+    writer.close()
+
+
 async def _mini_http(reader, writer):
     """Serve HTTP requests — REST API + static files."""
     try:
@@ -537,6 +561,17 @@ async def _mini_http(reader, writer):
 
                 if rest_path == "health":
                     response_data, status_code = _api_health()
+                elif rest_path == "admin/login" and method == "POST":
+                    try:
+                        login_data = json.loads(body) if body else {}
+                        pw = login_data.get("password", "")
+                        if _verify_admin_password(pw):
+                            token = _generate_session()
+                            response_data, status_code = {"token": token, "success": True}, 200
+                        else:
+                            response_data, status_code = {"error": "invalid password", "success": False}, 401
+                    except json.JSONDecodeError:
+                        response_data, status_code = {"error": "invalid JSON"}, 400
                 elif rest_path.startswith("rooms/"):
                     sub = rest_path[len("rooms/"):]
                     slash_idx = sub.find("/")
@@ -549,14 +584,21 @@ async def _mini_http(reader, writer):
 
                     if sub_resource is None:
                         response_data, status_code = {"error": "missing resource"}, 404
+                    elif sub_resource in ("notice", "checklist", "keymgmt") and method in ("POST", "PUT", "DELETE"):
+                        auth_header = headers.get("authorization", "")
+                        token = None
+                        if auth_header.lower().startswith("bearer "):
+                            token = auth_header[7:]
+                        if not _verify_session(token):
+                            response_data, status_code = {"error": "unauthorized", "message": "Authentication required"}, 401
+                        elif sub_resource == "notice":
+                            response_data, status_code = _api_room_notice(room_id, method, query_params, body)
+                        elif sub_resource == "checklist":
+                            response_data, status_code = _api_room_checklist(room_id, method, query_params, body)
+                        elif sub_resource == "keymgmt":
+                            response_data, status_code = _api_room_keymgmt(room_id, method, query_params, body)
                     elif sub_resource == "state" and method == "GET":
                         response_data, status_code = _api_room_state(room_id)
-                    elif sub_resource == "notice":
-                        response_data, status_code = _api_room_notice(room_id, method, query_params, body)
-                    elif sub_resource == "checklist":
-                        response_data, status_code = _api_room_checklist(room_id, method, query_params, body)
-                    elif sub_resource == "keymgmt":
-                        response_data, status_code = _api_room_keymgmt(room_id, method, query_params, body)
                     elif sub_resource == "chats" and method == "GET":
                         response_data, status_code = _api_room_chats(room_id)
                     else:
@@ -1634,6 +1676,22 @@ async def _ntp_sync_loop():
 async def main():
     global _start_time
     _start_time = time.time()
+    # TLS/SSL support (optional, env var CLIPPER_TLS=1 to enable WSS/HTTPS)
+    use_tls = os.environ.get("CLIPPER_TLS", "").lower() in ("1", "true", "yes")
+    tls_cert = os.environ.get("CLIPPER_TLS_CERT", "cert.pem")
+    tls_key = os.environ.get("CLIPPER_TLS_KEY", "key.pem")
+    ssl_context = None
+    if use_tls:
+        import ssl
+        if not os.path.exists(tls_cert) or not os.path.exists(tls_key):
+            _log('TLS', f'Certificate not found: {tls_cert} / {tls_key}')
+            _log('TLS', 'Generate with: openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes')
+            _log('TLS', 'or set CLIPPER_TLS=0 to run without encryption')
+            return
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(tls_cert, tls_key)
+        _log('TLS', f'Loaded certificate: {tls_cert} / {tls_key}')
+
     log_path = _setup_logging()
     _rotate_logs()
     _init_db()
@@ -1670,15 +1728,17 @@ async def main():
     _log('STARTUP', f'Data: {total_notices} notices, {total_boards} boards, {total_chats} chat backups')
     _log('STARTUP', f'Chat retention: {CHAT_RETENTION_DAYS} days')
     _log('STARTUP', f'DEBUG mode: {"ON" if DEBUG else "OFF"}')
-    _log('STARTUP', 'listening on ws://localhost:8765  |  http://localhost:8766')
+    ws_scheme = "wss" if ssl_context else "ws"
+    http_scheme = "https" if ssl_context else "http"
+    _log('STARTUP', f'listening on {ws_scheme}://localhost:8765  |  {http_scheme}://localhost:8766')
 
     loop = asyncio.get_running_loop()
     stop = loop.create_future()
 
     # Start HTTP server on port 8766
-    http_server = await asyncio.start_server(_mini_http, "0.0.0.0", 8766)
+    http_server = await asyncio.start_server(_mini_http, "0.0.0.0", 8766, ssl=ssl_context)
 
-    async with websockets.serve(handler, "0.0.0.0", 8765):
+    async with websockets.serve(handler, "0.0.0.0", 8765, ssl=ssl_context):
         await stop
 
 
