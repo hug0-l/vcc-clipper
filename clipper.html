@@ -1847,7 +1847,7 @@ const APP = {
                 connectWebSocket(url).then(() => {
                     // Reconnect: re-join the room or create a new one
                     if (APP.state.room) {
-                        sendWsMessage({type: 'join', room: APP.state.room, displayName: APP.state.displayName});
+                        sendWsMessage({type: 'join', room: APP.state.room, displayName: APP.state.displayName, deviceId: APP.state.deviceId});
                     } else {
                         sendWsMessage({type: 'generate'});
                     }
@@ -1901,7 +1901,7 @@ wsBus.on('reconnected', () => {
     APP.showStatusMsg('🔄 重連成功');
     const roomToJoin = APP.state._lastRoom || APP.state.room;
     if (roomToJoin) {
-        sendWsMessage({type: 'join', room: roomToJoin, displayName: APP.state.displayName});
+        sendWsMessage({type: 'join', room: roomToJoin, displayName: APP.state.displayName, deviceId: APP.state.deviceId});
     } else {
         sendWsMessage({type: 'generate'});
     }
@@ -2143,6 +2143,13 @@ APP.registerSyncProvider = function(fn) {
 APP.registerSyncConsumer = function(fn) {
     APP.state.syncConsumers.push(fn);
 };
+// ========== Device Identity (persistent peer ID) ==========
+APP.state.deviceId = loadFromStorage('vcc_device_id', null);
+if (!APP.state.deviceId) {
+    APP.state.deviceId = crypto.randomUUID();
+    saveToStorage('vcc_device_id', APP.state.deviceId);
+}
+
 // ========== Display Name ==========
 const ADJS = ['快樂','活潑','聰明','安靜','勇敢','溫柔','可愛','陽光','調皮','大方','瀟灑','優雅','熱情','冷靜','開朗'];
 const NOUNS = ['熊貓','海豚','老鷹','貓咪','狐狸','兔子','狼','老虎','獅子','企鵝','天鵝','蝴蝶','鸚鵡','鯨魚','樹懶'];
@@ -2219,7 +2226,7 @@ function handleWsMessage(data) {
             APP.state.room = data.room;
             APP.setRoomCode(data.room);
             APP.showStatusMsg(`配對代碼: ${data.room} — 等待其他人加入...`);
-            sendWsMessage({type: 'join', room: data.room, displayName: APP.state.displayName});
+            sendWsMessage({type: 'join', room: data.room, displayName: APP.state.displayName, deviceId: APP.state.deviceId});
             break;
 
         case 'joined':
@@ -2974,7 +2981,7 @@ function joinRoom() {
     connectWebSocket(serverUrl)
         .then(() => {
             APP.showStatusMsg('正在加入配對...');
-            sendWsMessage({type: 'join', room: code});
+            sendWsMessage({type: 'join', room: code, displayName: APP.state.displayName, deviceId: APP.state.deviceId});
         })
         .catch(() => {
             APP.showStatusMsg('❌ 無法連線到伺服器');

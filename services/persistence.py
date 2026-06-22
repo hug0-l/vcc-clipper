@@ -3,6 +3,8 @@ import json
 import sqlite3
 import hashlib
 import hmac
+import threading
+from datetime import datetime, timezone
 
 
 DB_PATH = "clipper_data.db"
@@ -11,6 +13,7 @@ DB_PATH = "clipper_data.db"
 class Persistence:
     def __init__(self, db_path=DB_PATH):
         self.db_path = db_path
+        self._lock = threading.Lock()
         self._init_db()
 
     def _init_db(self):
@@ -31,6 +34,15 @@ class Persistence:
                 """CREATE TABLE IF NOT EXISTS config (
                 key TEXT PRIMARY KEY,
                 value TEXT
+            )"""
+            )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS device_peers (
+                device_id TEXT PRIMARY KEY,
+                peer_id TEXT NOT NULL,
+                room_id TEXT DEFAULT '',
+                display_name TEXT DEFAULT '',
+                last_seen TEXT NOT NULL
             )"""
             )
             conn.commit()
@@ -142,3 +154,36 @@ class Persistence:
             return default
         finally:
             conn.close()
+
+    # --- Device-Peer mapping (thread-safe) ---
+
+    def get_peer_for_device(self, device_id):
+        """Look up a peer_id previously assigned to this device.
+        Returns (peer_id, room_id, display_name) tuple, or None.
+        """
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                row = conn.execute(
+                    "SELECT peer_id, room_id, display_name FROM device_peers WHERE device_id=?",
+                    (device_id,)
+                ).fetchone()
+                return row if row else None
+            finally:
+                conn.close()
+
+    def save_device_peer(self, device_id, peer_id, room_id='', display_name=''):
+        """Save or update a device→peer mapping. Thread-safe."""
+        with self._lock:
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute(
+                    """INSERT OR REPLACE INTO device_peers
+                    (device_id, peer_id, room_id, display_name, last_seen)
+                    VALUES (?,?,?,?,?)""",
+                    (device_id, peer_id, room_id, display_name,
+                     datetime.now(timezone.utc).isoformat())
+                )
+                conn.commit()
+            finally:
+                conn.close()

@@ -79,16 +79,20 @@ async def h_join(websocket, data, ctx):
             exclude=websocket,
         )
 
-    # Join new room
+    # Join new room (with optional deviceId for stable peer identity)
     rid = data["room"]
     display_name = data.get("displayName")
-    room_id, my_peer_id, peer_info = rs.add_peer(rid, websocket, display_name)
+    device_id = data.get("deviceId", "")
+    room_id, my_peer_id, peer_info, reused_peer = rs.add_peer(
+        rid, websocket, display_name, device_id
+    )
 
-    # Send joined confirmation
+    # Send joined confirmation (include reusedPeer flag for debugging)
     await websocket.send(json.dumps({
         "type": "joined",
         "room": room_id,
         "peerId": my_peer_id,
+        "reusedPeerId": reused_peer,
     }))
     ctx["debug"](f"\u2192 TX joined room={room_id} peerId={my_peer_id}")
 

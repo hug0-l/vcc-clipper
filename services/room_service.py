@@ -3,6 +3,7 @@ import random
 import string
 import time
 from datetime import datetime, timezone
+import logging
 
 
 class RoomService:
@@ -43,9 +44,31 @@ class RoomService:
             return True, False
         return False, False
 
-    def add_peer(self, rid, websocket, display_name=None):
-        """Add a peer to a room. Returns (room_id, my_peer_id, peer_info)."""
-        my_peer_id = self.generate_peer_id()
+    def add_peer(self, rid, websocket, display_name=None, device_id=None):
+        """Add a peer to a room. Returns (room_id, my_peer_id, peer_info, reused).
+
+        If device_id is provided, checks if a previous peer_id exists for this
+        device and reuses it (stable peer identity across reconnections).
+        Falls back to random peer_id if the device is unknown or its previous
+        peer_id is currently online (defense against duplicate sessions).
+        """
+        reused = False
+        my_peer_id = None
+
+        if device_id and hasattr(self, 'persistence') and self.persistence:
+            mapping = self.persistence.get_peer_for_device(device_id)
+            if mapping:
+                old_peer_id, old_room_id, old_display = mapping
+                # Reuse peer_id only if it's not currently online
+                if old_peer_id not in self.peer_ids:
+                    my_peer_id = old_peer_id
+                    self.peer_ids.add(my_peer_id)
+                    reused = True
+                    logging.debug("Reused peer_id %s for device %s", my_peer_id, device_id[:8])
+
+        if not my_peer_id:
+            my_peer_id = self.generate_peer_id()
+
         now_iso = datetime.now(timezone.utc).isoformat()
         if rid not in self.rooms:
             self.rooms[rid] = {}
@@ -56,7 +79,12 @@ class RoomService:
             "displayName": display_name or my_peer_id,
         }
         self.rooms[rid][my_peer_id] = info
-        return rid, my_peer_id, info
+
+        # Persist device→peer mapping for future reconnections
+        if device_id and hasattr(self, 'persistence') and self.persistence:
+            self.persistence.save_device_peer(device_id, my_peer_id, rid, display_name or my_peer_id)
+
+        return rid, my_peer_id, info, reused
 
     def get_other_peers(self, room_id, my_peer_id):
         """Get peers in a room excluding self."""
