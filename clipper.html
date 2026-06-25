@@ -1677,21 +1677,17 @@ if ('serviceWorker' in navigator) {
     </section>
     <section class="tab-pane" data-tab="about">
         <div style="max-width:540px;margin:0 auto;">
-            <h2 style="font-size:25px;font-weight:600;margin-bottom:12px;">關於 Clipper</h2>
-            <p style="color:#94a3b8;margin-bottom:20px;line-height:1.7;">
-                Clipper 是一套內網跨子網 P2P 多人協作工具，透過 WebRTC 建立點對點連線，
-                搭配 WebSocket 信令伺服器進行配對與持久化資料儲存。支援多達 50 台裝置同時連線。
-                採用模組化架構，各功能獨立隔離，單一模組故障不影響其他功能。
-            </p>
+            <h2 style="font-size:25px;font-weight:600;margin-bottom:12px;" data-i18n="about.title"></h2>
+            <p style="color:#94a3b8;margin-bottom:20px;line-height:1.7;" data-i18n="about.desc"></p>
             <table style="color:#94a3b8;font-size:16px;line-height:2;">
-                <tr><td style="padding-right:20px;color:#64748b;">版本</td><td id="aboutVersion">v2.0.0</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">作者</td><td>Hugo Leung</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">技術</td><td>WebRTC · WebSocket · Python · SQLite · Vanilla JS</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">前端架構</td><td>7 ClipperModule — 故障隔離</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">後端架構</td><td>7 Service 模組 · 路由表</td></tr>
-                <tr><td style="padding-right:20px;color:#64748b;">授權</td><td>MIT</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.version"></td><td id="aboutVersion">v2.2.0</td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.author"></td><td data-i18n="about.author_name"></td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.tech"></td><td data-i18n="about.tech_stack"></td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.frontend"></td><td data-i18n="about.frontend_arch"></td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.backend"></td><td data-i18n="about.backend_arch"></td></tr>
+                <tr><td style="padding-right:20px;color:#64748b;" data-i18n="about.license"></td><td data-i18n="about.mit_license"></td></tr>
             </table>
-            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;">🚀 功能</h3>
+            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;" data-i18n="about.features_title"></h3>
             <ul style="color:#94a3b8;font-size:16px;line-height:2;padding-left:20px;">
                 <li>💬 實時短信 — P2P 即時訊息，使用者頭像色碼 + 漸層泡泡</li>
                 <li>📁 檔案傳輸 — 拖放上傳，佇列傳送，SHA-256 完整性驗證</li>
@@ -1710,30 +1706,29 @@ if ('serviceWorker' in navigator) {
                 <li>🕐 頁頂時鐘 — 即時 hh:mm:ss 及當日日期</li>
                 <li>📱 自適應佈局 — 響應式斷點 768px，通知側欄可切換</li>
             </ul>
-            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;color:#f59e0b;">🔒 資訊安全提醒</h3>
+            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;color:#f59e0b;" data-i18n="about.security_title"></h3>
             <div style="background:#451a03;border:1px solid #991b1b;border-radius:8px;padding:12px 16px;font-size:14px;color:#fdba74;line-height:1.7;margin-bottom:16px;">
-                <p><strong>⚠️ 本應用僅供內網使用，請注意以下事項：</strong></p>
+                <p><strong data-i18n="about.security_warning"></strong></p>
                 <ul style="padding-left:16px;margin-top:8px;">
-                    <li>所有 P2P 訊息經 DTLS 加密，但 <strong>不建議</strong> 在不受信任的網路上傳輸敏感資料</li>
-                    <li>信令伺服器本身以明文 WebSocket 運行（<code>ws://</code>），配對及 Relay 過程無加密</li>
-                    <li>擁有配對代碼的任何用戶均可加入房間並存取所有共享資料</li>
-                    <li>聊天訊息會備份至伺服器（留存天數可調），請勿傳送機密對話</li>
-                    <li>建議在公司內部可信任網路中使用，若需跨網際網路請自行配置 WSS/TLS</li>
+                    <li>所有 P2P 訊息經 DTLS 加密，但 <strong>不建議</strong> 在不受信任的網路上傳輸敏感資料 / DTLS encrypted, but avoid sensitive data on untrusted networks</li>
+                    <li>信令伺服器以明文 WS 運行，配對及 Relay 無加密 / Signaling server uses plain WS, no encryption for pairing and relay</li>
+                    <li>擁有配對碼即可加入房間存取所有資料 / Anyone with the room code can access all data</li>
+                    <li>聊天訊息備份至伺服器，留存天數可調 / Chat backed up on server, retention adjustable</li>
+                    <li>建議內網使用，跨網際網路請配置 WSS/TLS / For intranet use; configure WSS/TLS for internet</li>
                 </ul>
             </div>
-            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;">⚠️ 已知限制</h3>
+            <h3 style="font-size:19px;font-weight:500;margin-top:24px;margin-bottom:8px;" data-i18n="about.limits_title"></h3>
             <ul style="color:#94a3b8;font-size:16px;line-height:1.8;padding-left:20px;">
                 <li>需要 Python 3.8+ 執行信令伺服器（可 Docker 化或打包為二進位檔）</li>
-                <li>跨子網需要網路設備支援 UDP 路由 — 已內建 Google STUN 伺服器（設定頁可修改），
-                    若 STUN 仍無法穿透則自動降為 WS Relay 中繼</li>
+                <li>跨子網需要網路設備支援 UDP 路由 — 已內建 Google STUN 伺服器，若 STUN 仍無法穿透則自動降為 WS Relay</li>
                 <li>檔案傳輸支援多對象並行傳送（各對象獨立不阻塞），P2P 失敗時自動降為 WS Relay</li>
-                <li>房間上限 50 人（可調整 <code>MAX_PEERS_PER_ROOM</code>），建議 20 人以內以保持 P2P 效能</li>
-                <li>標準 TURN 協議未內建（因為 WS Relay 已提供同等中繼功能），設定頁可自訂 STUN/TURN 位址</li>
+                <li>房間上限 50 人（可調整 <code>MAX_PEERS_PER_ROOM</code>），建議 20 人以內</li>
+                <li>標準 TURN 協議未內建（WS Relay 已提供同等中繼），設定頁可自訂 STUN/TURN</li>
             </ul>
             <p style="margin-top:24px;border-top:1px solid #1e293b;padding-top:16px;display:flex;gap:8px;">
-                <button class="btn btn-secondary" id="btnDump" style="font-size:15px;">🔍 Debug Dump</button>
+                <button class="btn btn-secondary" id="btnDump" style="font-size:15px;" data-i18n="about.debug_btn"></button>
                 <span style="font-size:12px;color:#475569;align-self:center;">
-                    <a href="https://github.com/hug0-l/vcc-clipper" target="_blank" style="color:#38bdf8;text-decoration:none;">GitHub</a>
+                    <a href="https://github.com/hug0-l/vcc-clipper" target="_blank" style="color:#38bdf8;text-decoration:none;" data-i18n="about.github_link"></a>
                 </span>
             </p>
         </div>
@@ -2104,6 +2099,8 @@ function updateTransportUI() {
 }
 function updatePeerTargetUI() { /* handled by modules */ }
 function updateFileUI() { if (window.filesModule) filesModule.updateFileUI(); }
+function markAllFailed() { if (window.filesModule) filesModule.markAllFailed(); }
+function showKeyForm(entry) { if (window.keymgmtModule) keymgmtModule.showKeyForm(entry); }
 
 const CHAT_PAGE_SIZE = 30;          // 每次載入更多增加條數
 const CHAT_MAX_VISIBLE = 200;
